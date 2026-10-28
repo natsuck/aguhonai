@@ -1,6 +1,6 @@
 # System Architecture
 
-`mermaid
+```mermaid
 flowchart TD
     subgraph CLIENT["Presentation Layer (Browser)"]
         UI["Blade + Tailwind CSS + Alpine.js + Vite<br/>Chart.js analytics charts"]
@@ -32,6 +32,6 @@ flowchart TD
     CTRL -- "Eloquent ORM (Read/Write)" --> DB
     SERV -- "Persist Results" --> DB
     JOB -- "Persist Generated Quiz" --> DB
-`
+```
 
-**Layers:** Client (Browser) ? Laravel Application ? OpenAI-compatible API and MySQL. Quiz generation runs asynchronously through Laravel's database-backed queue worker. Assessment scoring and program matching are deterministic; the AI service is used only to generate a cautious explanatory narrative of the computed profile, with a score-based fallback if the AI call fails.
+**Layers:** Client (Browser) → Laravel application → OpenAI-compatible API and MySQL. Quiz generation runs asynchronously through Laravel's database-backed queue worker. Assessment scoring and program matching are deterministic; the AI service is used only to generate a cautious explanatory narrative of the computed profile, with a score-based fallback if the AI call fails.
