@@ -1,40 +1,37 @@
 # System Architecture
 
-```mermaid
+`mermaid
 flowchart TD
-    subgraph CLIENT["Presentation Layer  (Browser)"]
-        UI["Blade + Tailwind + Alpine.js  UI<br/>Chart.js analytics charts"]
+    subgraph CLIENT["Presentation Layer (Browser)"]
+        UI["Blade + Tailwind CSS + Alpine.js + Vite<br/>Chart.js analytics charts"]
     end
 
-    subgraph APP["Application Layer —  Laravel 12 (PHP)"]
-        ROUTES["HTTP routes + middleware<br/>(auth · verified · signed · throttle)"]
-        CTRL["Controllers<br/>Assessment · Quiz · QuizAttempt · QuizAnalytics · AdminAnalytics"]
-        SERV["Service Layer<br/>OllamaService · TextExtractionService<br/>QuizGeneratorService · AnswerEvaluationService"]
-        JOB["Queue Job  (database queue)<br/>GenerateQuizFromMaterial"]
-        FALLBACK["Deterministic trait-weighted<br/>fallback scorer"]
+    subgraph APP["Application Layer - Laravel 12 (PHP 8.2+)"]
+        ROUTES["HTTP Routes + Middleware<br/>(auth, verified, admin, throttle)"]
+        CTRL["Controllers<br/>AssessmentController, QuizController,<br/>QuizAttemptController, AdminAnalyticsController"]
+        SERV["Service Layer<br/>OpenAIService, AssessmentScoringService,<br/>ProgramMatchingService, QuizGeneratorService,<br/>TextExtractionService"]
+        JOB["Queue Job (Database Queue)<br/>GenerateQuizFromMaterial"]
     end
 
-    subgraph AI["AI Layer —  local machine"]
-        OLLAMA[("Ollama HTTP API<br/>localhost:11434  ·  llama3")]
+    subgraph AI["AI Layer"]
+        OPENAI[("OpenAI-compatible Chat Completions API<br/>(configurable via OPENAI_BASE_URL)")]
     end
 
-    subgraph DATA["Data Layer —  MySQL"]
-        DB[("Database<br/>users · questions · answers · assessment_results<br/>quizzes · quiz_questions · quiz_attempts<br/>quiz_answers · jobs · cache · sessions")]
+    subgraph DATA["Data Layer - MySQL"]
+        DB[("Database<br/>users, questions, answers, assessment_results,<br/>program_profiles, quizzes, quiz_questions,<br/>quiz_flashcards, quiz_attempts, quiz_answers,<br/>jobs, cache, sessions")]
     end
 
-    UI -- "HTTPS requests" --> ROUTES
+    UI -- "HTTPS Requests" --> ROUTES
     ROUTES --> CTRL
-    CTRL -- "business logic" --> SERV
-    SERV -- "POST /api/generate<br/>(structured JSON)" --> OLLAMA
-    OLLAMA -- "JSON recommendation /<br/>questions / grading verdicts" --> SERV
-    SERV -- "Ollama unreachable" --> FALLBACK
-    CTRL -- "dispatch job" --> JOB
-    JOB -- "extract → prompt →<br/>validate / repair (× 3)" --> SERV
-    CTRL -- "Eloquent ORM<br/>read / write" --> DB
-    SERV -- "persist results" --> DB
-    JOB -- "insert quiz_questions<br/>transaction" --> DB
-```
+    CTRL -- "Business Logic" --> SERV
+    SERV -- "Chat Completions API Call" --> OPENAI
+    OPENAI -- "Structured/Text Response" --> SERV
+    CTRL -- "Dispatch Job" --> JOB
+    JOB -- "Text Extraction, Validation, AI Generation" --> SERV
+    SERV -- "API Request" --> OPENAI
+    CTRL -- "Eloquent ORM (Read/Write)" --> DB
+    SERV -- "Persist Results" --> DB
+    JOB -- "Persist Generated Quiz" --> DB
+`
 
-**Layers:** client (browser) → Laravel application → local Ollama LLM + MySQL. The quiz
-generator runs asynchronously through the database-backed queue worker; the assessment
-recommendation runs synchronously with an automatic deterministic fallback.
+**Layers:** Client (Browser) ? Laravel Application ? OpenAI-compatible API and MySQL. Quiz generation runs asynchronously through Laravel's database-backed queue worker. Assessment scoring and program matching are deterministic; the AI service is used only to generate a cautious explanatory narrative of the computed profile, with a score-based fallback if the AI call fails.

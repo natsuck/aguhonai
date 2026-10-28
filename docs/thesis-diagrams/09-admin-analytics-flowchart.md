@@ -1,26 +1,20 @@
-# Admin Analytics Flowchart (Guidance Counselor)
+﻿# Admin Analytics Flowchart
 
 ```mermaid
 flowchart TD
-    START([Counselor opens /admin/analytics])
-    ADM{user_type = admin?}
-    AGG["Aggregate from tables:<br/>assessment_results · users · quiz_attempts"]
-    KPI["KPIs: total submissions · unique students ·<br/>average confidence · live-AI vs fallback share"]
-    PROG["Program distribution counts<br/>BSCS · BSIT · BSAIS · BSHM · BSTM · ACT"]
-    FLAG["Flagged response count<br/>uniform · near-uniform · rapid completion"]
-    REC["Recent submissions table<br/>(searchable)"]
-    FEED["Return program distribution<br/>JSON feed (/admin/analytics/programs)"]
-    REND["Render analytics dashboard"]
-    DEN(("403<br/>Forbidden"))
+    START([Administrator opens Admin Analytics])
+    AUTH{User is admin?}
+    DENY["403 Forbidden"]
+    QUERY["Query aggregates from assessment_results, users, quizzes, quiz_attempts"]
+    KPI["Compute KPIs: assessment totals, student counts, AI vs fallback counts, flagged responses"]
+    DIST["Compute program distribution from assessment results"]
+    RECENT["Get recent submissions"]
+    RENDER["Render analytics dashboard"]
     END([End])
 
-    START --> ADM
-    ADM -- "No" --> DEN --> END
-    ADM -- "Yes" --> AGG --> KPI
-    KPI --> PROG --> FLAG --> REC --> REND
-    REND --> FEED --> END
+    START --> AUTH
+    AUTH -- "No" --> DENY --> END
+    AUTH -- "Yes" --> QUERY --> KPI --> DIST --> RECENT --> RENDER --> END
 ```
 
-- Read-only access: the counselor views aggregates and per-program breakdowns; no
-  individual student records are exposed beyond the summary table.
-- The distribution feed powers the front end charts as JSON.
+**Notes:** Analytics are generated from stored data. Metrics include assessment totals, student counts, program distribution, AI-generated vs fallback counts, flagged-response counts, and recent submissions.

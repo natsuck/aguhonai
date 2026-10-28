@@ -1,17 +1,13 @@
-# Quiz Status State Diagram
+﻿# Quiz Status State Diagram
 
 ```mermaid
 stateDiagram-v2
-    [*] --> queued: quiz created on upload
-    queued --> processing: queue worker starts
-    processing --> ready: topic coverage completed and generated items inserted
-    processing --> failed: text too short /<br/>invalid batch after configured repairs / exception
-    failed --> queued: student clicks "Retry" (re-dispatch)
-    ready --> ready: student takes or retakes quiz
+    [*] --> queued: Quiz created on upload
+    queued --> processing: Queue worker starts job
+    processing --> ready: Valid 15 MCQs and 10 flashcards saved
+    processing --> failed: Extraction error, insufficient text, validation failure, or API error
+    failed --> queued: Student retries (job re-dispatched)
     ready --> [*]
-    queued --> failed: job exhausted / transfer failed
 ```
 
-- `queued` → `processing` → `ready` is the happy path; generation is fully asynchronous.
-- A `failed` quiz retains the stored error message and can be retried, re-dispatching the
-  job without re-uploading the file.
+**Notes:** States reflect actual Quiz model statuses (queued, processing, ready, failed). Failed quizzes can be retried via re-dispatching the job.

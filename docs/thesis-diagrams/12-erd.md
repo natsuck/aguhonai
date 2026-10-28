@@ -1,4 +1,4 @@
-# Entity Relationship Diagram (ERD)
+﻿# Entity Relationship Diagram (ERD)
 
 ```mermaid
 erDiagram
@@ -8,7 +8,7 @@ erDiagram
         string email UK
         timestamp email_verified_at
         string password
-        string user_type "user | admin"
+        string user_type "user|admin"
         timestamp privacy_consented_at
         timestamp created_at
         timestamp updated_at
@@ -17,8 +17,15 @@ erDiagram
     questions {
         bigint id PK
         string question_text
-        string category "skills|interest|personality|work_style|values|technical"
+        string category
         boolean is_reverse
+        string instrument_version
+        integer item_number
+        string section "interest|verbal|quantitative|analytical"
+        string question_type "likert|multiple_choice"
+        string riasec_type "R|I|A|S|E|C"
+        json choices
+        integer correct_answer
         timestamp created_at
         timestamp updated_at
     }
@@ -27,7 +34,7 @@ erDiagram
         bigint id PK
         bigint user_id FK
         bigint question_id FK
-        integer answer "1-5 after inversion"
+        integer answer
         timestamp created_at
         timestamp updated_at
     }
@@ -35,18 +42,34 @@ erDiagram
     assessment_results {
         bigint id PK
         bigint user_id FK
-        string program_code "BSCS|BSIT|BSAIS|BSHM|BSTM|ACT"
+        string program_code
         string program_name
-        decimal confidence "0-100"
+        decimal confidence
         string fit_level
-        string source "ollama | fallback"
-        string strongest_trait
-        decimal strongest_trait_percentage
+        string source "ai|fallback"
         json response_flags
         integer completion_seconds
         json result
         json category_summary
         timestamp completed_at
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    program_profiles {
+        bigint id PK
+        string program_code UK
+        string program_name
+        integer realistic_weight
+        integer investigative_weight
+        integer artistic_weight
+        integer social_weight
+        integer enterprising_weight
+        integer conventional_weight
+        integer verbal_target
+        integer quantitative_target
+        integer analytical_target
+        boolean is_active
         timestamp created_at
         timestamp updated_at
     }
@@ -70,11 +93,11 @@ erDiagram
     quiz_questions {
         bigint id PK
         bigint quiz_id FK
-        enum type "mcq|identification (legacy)"
+        enum type "mcq|identification"
         text question
-        json choices "MCQ only"
+        json choices
         text correct_answer
-        text explanation "MCQ answer explanation"
+        text explanation
         timestamp created_at
         timestamp updated_at
     }
@@ -92,12 +115,11 @@ erDiagram
         bigint id PK
         bigint user_id FK
         bigint quiz_id FK
-        decimal score "percentage"
+        decimal score
         integer total_questions
         integer correct_count
         integer mcq_score
         integer identification_score
-        decimal ai_confidence
         text feedback
         timestamp started_at
         timestamp completed_at
@@ -111,8 +133,7 @@ erDiagram
         bigint question_id FK
         text user_answer
         boolean is_correct
-        text ai_explanation
-        decimal ai_confidence
+        text explanation
         timestamp created_at
         timestamp updated_at
     }
@@ -122,16 +143,9 @@ erDiagram
     users ||--o{ assessment_results : "earns"
     users ||--o{ quizzes : "owns"
     quizzes ||--o{ quiz_questions : "contains"
-    quizzes ||--o{ quiz_flashcards : "studies"
+    quizzes ||--o{ quiz_flashcards : "has"
     quizzes ||--o{ quiz_attempts : "attempted via"
     users ||--o{ quiz_attempts : "takes"
     quiz_attempts ||--o{ quiz_answers : "records"
     quiz_questions ||--o{ quiz_answers : "answered in"
 ```
-
-- **Assessment domain:** `users → answers → questions` (raw 1–5 Likert responses, reverse
-  scored), and `users → assessment_results` (one row per submission = history).
-- **Quiz domain:** `quizzes → quiz_questions`, `quizzes → quiz_attempts`, and
-  `quiz_answers` join attempts to questions with per-answer AI explanations.
-- Supporting Laravel tables (`password_reset_tokens`, `sessions`, `jobs`, `cache`, etc.)
-  also exist but are framework infrastructure rather than domain data.

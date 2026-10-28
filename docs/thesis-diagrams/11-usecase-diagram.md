@@ -1,22 +1,24 @@
-# Use Case Diagram
+﻿# Use Case Diagram
 
 ```mermaid
 flowchart LR
     S([STUDENT])
-    C([GUIDANCE COUNSELOR / ADMIN])
+    A([ADMINISTRATOR])
+    API([OpenAI-compatible API])
 
-    subgraph SYSTEM["AI-Powered Reality Check System"]
-        UC1("Register and log in")
-        UC2("Give privacy consent (RA 10173)")
-        UC3("Take program suitability assessment<br/>(26-item Likert)")
-        UC4("View recommendation report and history")
-        UC5("Upload learning material<br/>(PDF / DOCX / TXT ≤ 10 MB)")
-        UC6("Generate AI practice quizzes")
-        UC7("Take quizzes with countdown timer")
-        UC8("View graded attempts and AI explanations")
-        UC10("Manage own uploaded quizzes")
-        UC11("Admin: view guidance counselor analytics")
-        UC12("Manage profile, password, account")
+    subgraph SYSTEM["AguhonAI System"]
+        UC1("Register and Log In")
+        UC2("Give Privacy Consent")
+        UC3("Take 150-item Assessment")
+        UC4("View Assessment Result and Program Match")
+        UC5("View AI Explanation of Profile")
+        UC6("Upload Learning Material (PDF/DOCX/TXT)")
+        UC7("Generate Quiz (15 MCQs + 10 Flashcards)")
+        UC8("Take Quiz and View Results")
+        UC9("View Flashcards")
+        UC10("Manage Own Quizzes")
+        UC11("View Admin Analytics Dashboard")
+        UC12("Manage Users and Resources")
     end
 
     S --- UC1
@@ -27,12 +29,10 @@ flowchart LR
     S --- UC6
     S --- UC7
     S --- UC8
+    S --- UC9
     S --- UC10
-    S --- UC12
-    C --- UC11
-    C --- UC12
+    A --- UC11
+    A --- UC12
+    UC7 -. "uses" .-> API
+    UC5 -. "uses" .-> API
 ```
-
-**Actors:** the *Student* (senior high school, incoming, or freshman college enrollee)
-performs the assessment and quiz flows; the *Guidance Counselor / Admin* additionally
-accesses the aggregate analytics dashboard (use case 11).

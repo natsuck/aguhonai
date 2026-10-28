@@ -1,45 +1,36 @@
-# Assessment Module Flowchart
+﻿# Assessment Module Flowchart
 
 ```mermaid
 flowchart TD
-    START([Student selects<br/>Program Suitability Assessment])
-    CON{Privacy consent<br/>recorded?}
-    FORM["Show RA 10173 consent notice"]
-    CONS{Consented?}
+    START([Student selects Program Suitability Assessment])
+    CON{Privacy consent recorded?}
+    CONSENT["Show RA 10173 consent notice"]
+    GIVE{User accepts consent?}
     STAMP["Save privacy_consented_at"]
-    WIZ["Present 26-item Likert wizard<br/>one question at a time"]
-    SUB[Submit responses]
-    FULL{All 26 answered?}
-    REV["Reverse-score reversed items<br/>answer = 6 - answer"]
-    UPS["Upsert raw answers<br/>(answers table)"]
-    AI["POST Ollama /api/generate<br/>recommendationSchema (JSON)"]
-    VAL{Valid JSON?}
-    RET{Attempts<br/>remaining?}
-    FALL["Deterministic trait-weighted scorer<br/>source = 'fallback'"]
-    FLAGS["Compute response flags<br/>uniform · near-uniform · rapid (< 10 s)"]
-    SAVE["Insert assessment_results<br/>result + category_summary + source"]
-    RPT["Show recommendation report<br/>AI-generated / Offline badge<br/>flags · history"]
+    LOAD["Load current 150-item instrument (90 RIASEC + 60 aptitude)"]
+    FORM["Present assessment form"]
+    SUBMIT[Submit all 150 responses]
+    VALID{All 150 responses valid?}
+    SCORE["Calculate RIASEC scores (15 per dimension) and aptitude correct-answer rates (20 per section)"]
+    MATCH["Deterministic program matching against configured program profiles"]
+    NARR["Generate AI explanation of computed profile"]
+    AICHECK{AI explanation successful?}
+    FALLBACK["Use score-based explanatory narrative"]
+    STORE["Store assessment result and program match"]
+    RESULT["Display student profile, deterministic program match, and narrative"]
     END([End])
 
     START --> CON
-    CON -- "No" --> FORM --> CONS
-    CONS -- "No" --> END
-    CONS -- "Yes" --> STAMP --> WIZ
-    CON -- "Yes" --> WIZ
-    WIZ --> SUB --> FULL
-    FULL -- "No" --> WIZ
-    FULL -- "Yes" --> REV --> UPS
-    UPS --> AI --> VAL
-    VAL -- "Yes" --> SAVE
-    VAL -- "No" --> RET
-    RET -- "Yes" --> AI
-    RET -- "No" --> FALL --> SAVE
-    FLAGS --> SAVE
-    SAVE --> RPT --> END
+    CON -- "No" --> CONSENT --> GIVE
+    GIVE -- "No" --> END
+    GIVE -- "Yes" --> STAMP --> LOAD
+    CON -- "Yes" --> LOAD
+    LOAD --> FORM --> SUBMIT --> VALID
+    VALID -- "No" --> FORM
+    VALID -- "Yes" --> SCORE --> MATCH --> NARR --> AICHECK
+    AICHECK -- "Yes" --> STORE
+    AICHECK -- "No" --> FALLBACK --> STORE
+    STORE --> RESULT --> END
 ```
 
-- Consent is a one-time gate; it is recorded on the `users` table before any data is
-  collected (RA 10173 Data Privacy Act).
-- The AI recommendation is synchronous; if Ollama is unreachable or returns invalid JSON
-  after the configured retries, the deterministic trait-weighted scorer guarantees a
-  result tagged `source = fallback`, shown to the student as an "Offline estimate".
+**Notes:** Assessment requires exactly 150 responses. Program matching is deterministic; AI is only used to explain the computed profile with a fallback to a score-based summary if the AI call fails.

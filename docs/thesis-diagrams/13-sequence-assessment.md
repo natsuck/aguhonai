@@ -1,35 +1,39 @@
-# Sequence Diagram — Assessment Submission
+﻿# Sequence Diagram - Assessment Submission
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant B as Browser (Student)
+    participant S as Student (Browser)
     participant AC as AssessmentController
-    participant OS as OllamaService
-    participant OL as Ollama (localhost:11434)
+    participant AS as AssessmentScoringService
+    participant PM as ProgramMatchingService
+    participant OAI as OpenAIService
+    participant API as OpenAI-compatible API
     participant DB as MySQL
 
-    B->>AC: POST /assessment/submit (26 Likert answers)
-    AC->>AC: reverse-score reversed items (6 - answer)
-    AC->>DB: upsert answers rows
-    AC->>OS: analyze(answers)
-    alt Ollama reachable
-        OS->>OL: POST /api/generate (recommendationSchema, temp 0.15)
-        OL-->>OS: structured JSON recommendation
-    else unreachable or invalid JSON after retries
-        OS->>OS: deterministic trait-weighted scorer (source = fallback)
+    S->>AC: POST /assessment/submit (150 responses)
+    AC->>AC: Validate consent and responses
+    AC->>AS: score(responses)
+    AS-->>AC: RIASEC scores and aptitude rates
+    AC->>PM: match(scoreBreakdown)
+    PM->>DB: Load active program profiles
+    DB-->>PM: Program profiles
+    PM-->>AC: Deterministic program match and Holland code
+    AC->>OAI: analyzeAssessmentProfile(scoreBreakdown)
+    alt AI available
+        OAI->>API: POST /chat/completions (narrative request)
+        API-->>OAI: Narrative response
+        OAI-->>AC: AI narrative
+    else AI fails
+        OAI-->>AC: Exception
+        AC->>AC: Generate score-based fallback narrative
     end
-    OS-->>AC: normalized recommendation payload
-    AC->>AC: response flags + category summary + strongest trait
-    AC->>DB: insert assessment_results (history row)
-    AC-->>B: redirect to /results
-    B->>AC: GET /results
-    AC->>DB: read latest assessment_results
-    DB-->>AC: persisted result (survives session expiry)
-    AC-->>B: render recommendation report (AI / Offline badge)
+    AC->>DB: Create AssessmentResult with match and narrative
+    AC-->>S: Redirect to results page
+    S->>AC: GET /results
+    AC->>DB: Load assessment result
+    DB-->>AC: Result data
+    AC-->>S: Display profile, deterministic match, and narrative
 ```
 
-**Key behaviors:** reverse scoring happens before persistence; the AI result is
-*persisted*, so a later session reload reads the record from the database rather than from
-the session; validity flags (uniform / near-uniform / < 10 s completion) are computed
-server side and attached to the saved record.
+**Notes:** Program matching is deterministic and happens before AI explanation. AI only generates a cautious narrative/explanation; if it fails, a score-based fallback is used.

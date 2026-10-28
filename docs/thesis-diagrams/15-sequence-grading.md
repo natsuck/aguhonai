@@ -1,30 +1,27 @@
-# Sequence Diagram — Quiz Attempt and Grading
+﻿# Sequence Diagram - Answer Grading
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant B as Browser (Student)
-    participant QA as QuizAttemptController
-    participant AS as AnswerEvaluationService
-    participant OL as Ollama (localhost:11434)
+    participant S as Student (Browser)
+    participant QAC as QuizAttemptController
     participant DB as MySQL
 
-    B->>QA: POST /quizzes/{quiz}/attempts (answers for generated quiz items)
-    QA->>QA: grade MCQs deterministically (normalized string match)
-    QA->>QA: resolve blanks and exact-normalized identifications locally
-    QA->>AS: evaluateBatch(remaining identification answers)
-    alt AI available
-        AS->>OL: POST /api/generate (batch grading, temp 0.0)
-        OL-->>AS: JSON verdicts [{is_correct, confidence, explanation}]
-    else not available or invalid
-        AS->>AS: per-item fallback: exact · substring · Levenshtein ≥ 0.82
+    S->>QAC: POST /quizzes/{quiz}/attempts (answers)
+    QAC->>QAC: Validate submission
+    QAC->>DB: Load quiz questions
+    DB-->>QAC: Questions with correct answers
+    QAC->>QAC: Grade MCQs deterministically (compare with correct_answer)
+    alt Other question types (if any)
+        QAC->>QAC: Apply appropriate grading logic
     end
-    AS-->>QA: per-answer verdicts
-    QA->>QA: compute score = correct/total × 100 and feedback tiers
-    QA->>DB: insert quiz_attempts + quiz_answers (transaction)
-    QA-->>B: redirect to attempt review (score card, AI explanations)
+    QAC->>QAC: Calculate score and counts
+    QAC->>DB: Transaction - create QuizAttempt and QuizAnswers
+    QAC-->>S: Redirect to attempt result/review
+    S->>QAC: GET /quiz-attempts/{quizAttempt}
+    QAC->>DB: Load attempt and answers
+    DB-->>QAC: Attempt data
+    QAC-->>S: Display score and review
 ```
 
-**Key behaviors:** MCQs never call the AI; identification grading is batched into a single
-request so a typical attempt incurs 0–1 AI calls; grading happens inside a transaction so
-the attempt and its per-answer rows are stored atomically.
+**Notes:** MCQs are graded deterministically by comparing student answers with stored correct answers. The system retains compatibility for older identification questions, but the current quiz generator produces only MCQs and flashcards.

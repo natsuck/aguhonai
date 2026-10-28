@@ -1,47 +1,50 @@
-# Sequence Diagram — AI Quiz Generation
+﻿# Sequence Diagram - Quiz Generation
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant B as Browser (Student)
+    participant S as Student (Browser)
     participant QC as QuizController
-    participant Q as MySQL (quizzes · jobs)
-    participant W as Queue Worker (GenerateQuizFromMaterial)
+    participant DB as MySQL (quizzes, jobs)
+    participant QW as Queue Worker
+    participant J as GenerateQuizFromMaterial
     participant TE as TextExtractionService
     participant QG as QuizGeneratorService
-    participant OL as OpenAIService
+    participant OAI as OpenAIService
+    participant API as OpenAI-compatible API
 
-    B->>QC: POST /quizzes (file ≤ 10 MB, title)
-    QC->>QC: validate pdf/docx/txt and size
-    QC->>Q: store file and insert quiz (status = queued)
-    QC->>Q: dispatch GenerateQuizFromMaterial on the 'ai' queue
-    QC-->>B: redirect /quizzes/{quiz} (status polling begins)
-    Q->>W: job claimed
-    W->>Q: status = processing
-    W->>TE: extract(source_file)
-    TE->>TE: PDF / DOCX / TXT → complete cleaned text (configured safety ceiling)
-    TE-->>W: readable text (≥ 100 chars)
-    W->>QG: generate(extractedText)
-    loop each source chunk
-        QG->>OL: Analyze topics and coverage targets
-        OL-->>QG: JSON topic plan
+    S->>QC: POST /quizzes (PDF/DOCX/TXT, max 10 MB)
+    QC->>QC: Validate file type and size
+    QC->>DB: Store file and create Quiz (status=queued)
+    QC->>DB: Dispatch job to database queue (ai)
+    QC-->>S: Redirect to quiz page (status polling)
+
+    QW->>DB: Claim job
+    QW->>J: handle(quizId)
+    J->>DB: Update status to processing
+    J->>TE: extract(source_file)
+    TE-->>J: Extracted and cleaned text
+    J->>QG: generate(extractedText)
+    QG->>QG: Apply character cap (OPENAI_MAX_DOCUMENT_CHARS)
+    QG->>OAI: generate(prompt, json/schema)
+    OAI->>API: POST /chat/completions
+    API-->>OAI: Generated content
+    OAI-->>QG: Response
+    QG->>QG: Validate structure (exactly 15 MCQs + 10 flashcards)
+    alt Valid
+        QG-->>J: Valid generated quiz
+        J->>DB: Transaction - save questions and flashcards, status=ready
+    else Invalid
+        QG-->>J: Validation error
+        J->>DB: Update status=failed with generation_error
     end
-    loop topic-specific batches and targeted repairs
-        QG->>OL: Generate grounded MCQ or flashcard batch
-        OL-->>QG: Strict structured JSON
-        QG->>QG: Validate item structure, source quotes, duplicates, coverage
+
+    loop Status polling
+        S->>QC: GET /quizzes/{quiz}/status
+        QC->>DB: Get quiz status
+        DB-->>QC: Status
+        QC-->>S: JSON status
     end
-    QG-->>W: coverage-complete adaptive quiz
-    W->>Q: transactional insert quiz_questions and status = ready
-    loop browser polling every 2 s
-        B->>QC: GET /quizzes/{quiz}/status
-        QC-->>B: { status: "ready" }
-    end
-    B->>QC: GET /quizzes/{quiz}
-    QC-->>B: quiz page with question browser
 ```
 
-**Key behaviors:** the upload endpoint returns immediately and all heavy work runs on the
-queue worker; every source chunk is analyzed, then 15 MCQs are distributed across topics,
-validated in batches, and missing items are requested without regenerating valid items.
-Flashcard count remains based on document coverage.
+**Notes:** Generation is asynchronous via Laravel database-backed queue. Exactly 15 MCQs and 10 flashcards are generated and validated. Text is capped by configuration.
