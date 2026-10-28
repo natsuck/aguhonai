@@ -26,4 +26,3 @@ flowchart LR
     end
 
     IN --> PR --> OUT
-```
