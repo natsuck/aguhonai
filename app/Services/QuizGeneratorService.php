@@ -138,13 +138,13 @@ class QuizGeneratorService
                 'confidence' => ['type' => 'number'],
                 'mcqs' => [
                     'type' => 'array',
-                    'minItems' => 15,
+                    'minItems' => 10,
                     'maxItems' => 15,
                     'items' => $mcqItem,
                 ],
                 'flashcards' => [
                     'type' => 'array',
-                    'minItems' => 10,
+                    'minItems' => 5,
                     'maxItems' => 10,
                     'items' => $flashcardItem,
                 ],
