@@ -2,6 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Exceptions\OpenAIQuotaExceededException;
+use App\Exceptions\OpenAIRateLimitException;
 use App\Exceptions\OpenAIRequestException;
 use App\Models\Quiz;
 use App\Models\QuizQuestion;
@@ -44,6 +46,7 @@ class GenerateQuizFromMaterial implements ShouldQueue
             $quiz->update([
                 'status' => Quiz::STATUS_PROCESSING,
                 'generation_error' => null,
+                'rate_limited_until' => null,
                 'extracted_text' => null,
                 'ai_confidence' => null,
                 'generated_at' => null,
@@ -57,7 +60,19 @@ class GenerateQuizFromMaterial implements ShouldQueue
             'extracted_characters' => mb_strlen($extractedText),
         ]);
 
-        $generatedQuiz = $generator->generate($extractedText, (int) $quiz->requested_question_count);
+        try {
+            $generatedQuiz = $generator->generate($extractedText, (int) $quiz->requested_question_count);
+        } catch (OpenAIRateLimitException|OpenAIQuotaExceededException $exception) {
+            // The provider already retried with Retry-After, so retrying the
+            // whole queue job would only burn more quota and worker time.
+            $this->fail($exception);
+
+            if ($this->job === null) {
+                $this->failed($exception);
+            }
+
+            return;
+        }
 
         DB::transaction(function () use ($quiz, $extractedText, $generatedQuiz): void {
             $quiz->questions()->delete();
@@ -83,6 +98,8 @@ class GenerateQuizFromMaterial implements ShouldQueue
             $quiz->update([
                 'extracted_text' => $extractedText,
                 'status' => Quiz::STATUS_READY,
+                'generation_error' => null,
+                'rate_limited_until' => null,
                 'ai_confidence' => $generatedQuiz['confidence'],
                 'generated_at' => now(),
             ]);
@@ -113,6 +130,9 @@ class GenerateQuizFromMaterial implements ShouldQueue
             $quiz->update([
                 'status' => Quiz::STATUS_FAILED,
                 'generation_error' => $this->studentSafeError($exception),
+                'rate_limited_until' => $exception instanceof OpenAIRateLimitException
+                    ? now()->addSeconds($exception->retryAfter)
+                    : null,
                 'extracted_text' => null,
                 'ai_confidence' => null,
                 'generated_at' => null,
@@ -128,12 +148,26 @@ class GenerateQuizFromMaterial implements ShouldQueue
 
     private function studentSafeError(Throwable $exception): string
     {
+        if ($exception instanceof OpenAIRateLimitException) {
+            return 'The AI service is temporarily at capacity. Please try again in about '
+                .$exception->retryAfter.' seconds.';
+        }
+
+        if ($exception instanceof OpenAIQuotaExceededException) {
+            return 'The AI service quota has been exhausted. Please contact the administrator.';
+        }
+
         if ($exception instanceof OpenAIRequestException) {
             return 'The quiz-generation service could not be reached. Please try again later.';
         }
 
         if (str_contains($exception->getMessage(), 'not contain enough readable text')) {
             return 'The uploaded material did not contain enough readable text. Please upload a clearer or more complete document.';
+        }
+
+        if (str_contains($exception->getMessage(), 'PDF could not be read reliably')
+            || str_contains($exception->getMessage(), 'secured or password-protected')) {
+            return 'The uploaded PDF could not be read reliably. Please upload an unlocked PDF, or convert the material to DOCX or TXT.';
         }
 
         if (str_contains($exception->getMessage(), 'No valid document-grounded questions')) {

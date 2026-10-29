@@ -1,7 +1,12 @@
 <?php
 
+use App\Exceptions\OpenAIQuotaExceededException;
+use App\Exceptions\OpenAIRateLimitException;
+use App\Exceptions\OpenAIRequestException;
 use App\Services\OpenAIService;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 
 function assessmentRow(string $question, string $category, int $answer): array
 {
@@ -99,6 +104,8 @@ it('produces a marked fallback when the ai output is not json', function () {
 });
 
 it('produces a marked fallback when the openai service fails', function () {
+    config(['services.openai.rate_limit_base_delay' => 0]);
+
     Http::fake([
         'https://api.openai.com/*' => Http::response('server exploded', 500),
     ]);
@@ -112,14 +119,120 @@ it('produces a marked fallback when the openai service fails', function () {
 });
 
 it('surfaces a specific connectivity message when DNS cannot resolve the OpenAI host', function () {
+    config(['services.openai.rate_limit_base_delay' => 0]);
+
     Http::fake([
-        'https://api.openai.com/*' => fn () => throw new \Illuminate\Http\Client\ConnectionException(
+        'https://api.openai.com/*' => fn () => throw new ConnectionException(
             'cURL error 6: Could not resolve host: api.openai.com'
         ),
     ]);
 
     expect(fn () => (new OpenAIService)->generate('Generate a quiz.'))
-        ->toThrow(\App\Exceptions\OpenAIRequestException::class, 'Check internet/DNS connectivity');
+        ->toThrow(OpenAIRequestException::class, 'Check internet/DNS connectivity');
+});
+
+it('retries a short rate limit and succeeds', function () {
+    config([
+        'services.openai.rate_limit_max_retries' => 2,
+        'services.openai.rate_limit_base_delay' => 0,
+        'services.openai.rate_limit_inline_max_wait' => 10,
+    ]);
+    Sleep::fake();
+
+    Http::fakeSequence()
+        ->push([
+            'error' => ['code' => 'rate_limit_exceeded', 'message' => 'Rate limit reached.'],
+        ], 429, ['Retry-After' => '1'])
+        ->push([
+            'choices' => [['message' => ['content' => 'Recovered after waiting.']]],
+        ]);
+
+    $result = (new OpenAIService)->generate('Generate a quiz.');
+
+    expect($result)->toBe('Recovered after waiting.');
+    Http::assertSentCount(2);
+});
+
+it('surfaces a rate limit exception after retries are exhausted', function () {
+    config([
+        'services.openai.rate_limit_max_retries' => 1,
+        'services.openai.rate_limit_base_delay' => 0,
+        'services.openai.rate_limit_inline_max_wait' => 10,
+    ]);
+    Sleep::fake();
+
+    Http::fake([
+        'https://api.openai.com/*' => Http::response([
+            'error' => ['code' => 'rate_limit_exceeded', 'message' => 'Rate limit reached.'],
+        ], 429, ['Retry-After' => '3']),
+    ]);
+
+    try {
+        (new OpenAIService)->generate('Generate a quiz.');
+        $this->fail('Expected a rate limit exception.');
+    } catch (OpenAIRateLimitException $exception) {
+        expect($exception->retryAfter)->toBe(3)
+            ->and($exception->getMessage())->toContain('rate limit');
+    }
+
+    Http::assertSentCount(2);
+});
+
+it('does not retry an exhausted openai quota', function () {
+    config(['services.openai.rate_limit_max_retries' => 3]);
+
+    Http::fake([
+        'https://api.openai.com/*' => Http::response([
+            'error' => [
+                'code' => 'insufficient_quota',
+                'message' => 'You exceeded your current quota, please check your plan and billing details.',
+            ],
+        ], 429),
+    ]);
+
+    expect(fn () => (new OpenAIService)->generate('Generate a quiz.'))
+        ->toThrow(OpenAIQuotaExceededException::class);
+
+    Http::assertSentCount(1);
+});
+
+it('stops retrying immediately when the server asks for a long wait', function () {
+    config([
+        'services.openai.rate_limit_max_retries' => 3,
+        'services.openai.rate_limit_inline_max_wait' => 5,
+    ]);
+
+    Http::fake([
+        'https://api.openai.com/*' => Http::response([
+            'error' => ['code' => 'rate_limit_exceeded', 'message' => 'Rate limit reached.'],
+        ], 429, ['Retry-After' => '60']),
+    ]);
+
+    try {
+        (new OpenAIService)->generate('Generate a quiz.');
+        $this->fail('Expected a rate limit exception.');
+    } catch (OpenAIRateLimitException $exception) {
+        expect($exception->retryAfter)->toBe(60);
+    }
+
+    Http::assertSentCount(1);
+});
+
+it('parses the openai rate limit reset header', function () {
+    config(['services.openai.rate_limit_max_retries' => 0]);
+
+    Http::fake([
+        'https://api.openai.com/*' => Http::response([
+            'error' => ['code' => 'rate_limit_exceeded', 'message' => 'Rate limit reached.'],
+        ], 429, ['x-ratelimit-reset-requests' => '6m0s']),
+    ]);
+
+    try {
+        (new OpenAIService)->generate('Generate a quiz.');
+        $this->fail('Expected a rate limit exception.');
+    } catch (OpenAIRateLimitException $exception) {
+        expect($exception->retryAfter)->toBe(360);
+    }
 });
 
 it('returns a profile explanation without AI-generated program rankings', function () {

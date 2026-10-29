@@ -2,9 +2,12 @@
 
 namespace App\Services;
 
+use App\Exceptions\OpenAIQuotaExceededException;
+use App\Exceptions\OpenAIRateLimitException;
 use App\Exceptions\OpenAIRequestException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use JsonException;
@@ -24,7 +27,11 @@ class OpenAIService
     {
         $baseUrl = rtrim((string) config('services.openai.base_url', 'https://api.openai.com/v1'), '/');
         $timeout = (int) config('services.openai.timeout', 30);
-        $retries = (int) config('services.openai.retries', 2);
+        $retries = (int) config(
+            'services.openai.rate_limit_max_retries',
+            config('services.openai.retries', 2)
+        );
+        $maxAttempts = max(1, $retries + 1);
         $apiKey = (string) config('services.openai.key', '');
         $model ??= (string) config('services.openai.models.default', 'gpt-4o-mini');
 
@@ -69,23 +76,25 @@ class OpenAIService
                 $request->withHeaders(['OpenAI-Organization' => $organization]);
             }
 
-            if ($retries > 0) {
-                $request = $request->retry($retries, 1000, function ($exception): bool {
-                    if ($exception instanceof ConnectionException) {
-                        return true;
-                    }
-
-                    return $exception instanceof RequestException
-                        && in_array($exception->response->status(), [408, 429], true)
-                        || ($exception->response->status() ?? 0) >= 500;
-                });
+            if ($maxAttempts > 1) {
+                $request = $request->retry(
+                    $maxAttempts,
+                    fn (int $attempt, mixed $exception): int => $this->retryDelayMilliseconds($attempt, $exception),
+                    fn (mixed $exception): bool => $this->shouldRetry($exception),
+                    throw: false,
+                );
             }
 
             $response = $request->post($baseUrl.'/chat/completions', $payload);
 
+            if ($response->status() === 429) {
+                throw $this->rateLimitException($response, $model);
+            }
+
             if ($response->failed()) {
                 Log::warning('OpenAI returned an unsuccessful response.', [
                     'status' => $response->status(),
+                    'request_id' => $response->header('x-request-id'),
                     'body' => $response->body(),
                 ]);
 
@@ -100,6 +109,8 @@ class OpenAIService
             }
 
             return $answer;
+        } catch (OpenAIRequestException $exception) {
+            throw $exception;
         } catch (Throwable $exception) {
             Log::error('OpenAI request failed.', [
                 'model' => $model,
@@ -112,6 +123,158 @@ class OpenAIService
 
             throw new OpenAIRequestException($message, previous: $exception);
         }
+    }
+
+    private function shouldRetry(mixed $exception): bool
+    {
+        if ($exception instanceof ConnectionException) {
+            return true;
+        }
+
+        if (! $exception instanceof RequestException) {
+            return false;
+        }
+
+        $status = $exception->response->status();
+
+        if ($status === 429) {
+            if ($this->isQuotaExceeded($exception->response)) {
+                return false;
+            }
+
+            $inlineMaxWait = max(0, (int) config('services.openai.rate_limit_inline_max_wait', 10));
+            $retryAfter = $this->retryAfterHeaderSeconds($exception->response);
+
+            return $retryAfter === null || $retryAfter <= $inlineMaxWait;
+        }
+
+        return in_array($status, [408, 409, 425], true) || $status >= 500;
+    }
+
+    private function retryDelayMilliseconds(int $attempt, mixed $exception): int
+    {
+        if ($exception instanceof RequestException && $exception->response->status() === 429) {
+            $retryAfter = $this->retryAfterHeaderSeconds($exception->response);
+
+            if ($retryAfter !== null) {
+                $seconds = min($retryAfter, $this->maxRetryDelaySeconds());
+
+                return (int) round($seconds * 1000);
+            }
+        }
+
+        $base = max(0, (int) config('services.openai.rate_limit_base_delay', 2));
+        $delay = $base * (2 ** max(0, $attempt - 1));
+        $jitter = max(0.0, (float) config('services.openai.retry_jitter', 0.2));
+
+        if ($delay > 0 && $jitter > 0) {
+            $delay *= 1 + ((mt_rand() / mt_getrandmax()) * $jitter);
+        }
+
+        $delay = min($delay, $this->maxRetryDelaySeconds());
+
+        return (int) round($delay * 1000);
+    }
+
+    private function maxRetryDelaySeconds(): int
+    {
+        return max(1, (int) config('services.openai.rate_limit_max_delay', 30));
+    }
+
+    private function parseRetryAfter(Response $response): int
+    {
+        return $this->retryAfterHeaderSeconds($response) ?? $this->maxRetryDelaySeconds();
+    }
+
+    private function retryAfterHeaderSeconds(Response $response): ?int
+    {
+        $seconds = $this->durationToSeconds((string) $response->header('Retry-After'));
+
+        if ($seconds === null) {
+            $seconds = $this->durationToSeconds((string) $response->header('x-ratelimit-reset-requests'));
+        }
+
+        if ($seconds === null) {
+            return null;
+        }
+
+        return max(1, min(3600, (int) ceil($seconds)));
+    }
+
+    private function durationToSeconds(string $value): ?int
+    {
+        $value = trim($value);
+
+        if ($value === '') {
+            return null;
+        }
+
+        if (is_numeric($value)) {
+            return (int) ceil((float) $value);
+        }
+
+        preg_match_all('/(\d+(?:\.\d+)?)\s*(ms|h|m|s)/i', $value, $matches, PREG_SET_ORDER);
+
+        if ($matches === []) {
+            return null;
+        }
+
+        $seconds = 0.0;
+
+        foreach ($matches as $match) {
+            $amount = (float) $match[1];
+
+            $seconds += match (strtolower($match[2])) {
+                'h' => $amount * 3600,
+                'm' => $amount * 60,
+                's' => $amount,
+                'ms' => $amount / 1000,
+                default => 0.0,
+            };
+        }
+
+        return (int) ceil($seconds);
+    }
+
+    private function isQuotaExceeded(Response $response): bool
+    {
+        $code = strtolower((string) ($response->json('error.code') ?? ''));
+        $type = strtolower((string) ($response->json('error.type') ?? ''));
+        $message = strtolower((string) ($response->json('error.message') ?? ''));
+
+        return in_array($code, ['insufficient_quota', 'billing_hard_limit_reached'], true)
+            || $type === 'insufficient_quota'
+            || str_contains($message, 'exceeded your current quota')
+            || str_contains($message, 'billing');
+    }
+
+    private function rateLimitException(Response $response, string $model): OpenAIRequestException
+    {
+        $requestId = $response->header('x-request-id');
+
+        if ($this->isQuotaExceeded($response)) {
+            Log::critical('OpenAI quota exhausted.', [
+                'model' => $model,
+                'status' => $response->status(),
+                'request_id' => $requestId,
+            ]);
+
+            return new OpenAIQuotaExceededException;
+        }
+
+        $retryAfter = $this->parseRetryAfter($response);
+
+        Log::warning('OpenAI rate limit reached.', [
+            'model' => $model,
+            'status' => $response->status(),
+            'retry_after' => $retryAfter,
+            'request_id' => $requestId,
+        ]);
+
+        return new OpenAIRateLimitException(
+            'OpenAI rate limit reached. Retry after '.$retryAfter.' seconds.',
+            $retryAfter
+        );
     }
 
     /**
@@ -257,6 +420,14 @@ PROMPT;
                 $this->decodeJsonObject($response),
                 $answerRows
             );
+        } catch (OpenAIRateLimitException|OpenAIQuotaExceededException $exception) {
+            // A rate-limited provider should not receive another immediate
+            // request, so skip the plain JSON retry and use the fallback.
+            Log::warning('AI assessment is rate limited. Falling back to deterministic recommendation.', [
+                'message' => $exception->getMessage(),
+            ]);
+
+            return $this->fallbackRecommendation($answerRows, $exception->getMessage());
         } catch (Throwable $exception) {
             // Structured outputs can fail on providers or models that do not
             // understand json_schema response formats. Retry once in plain

@@ -125,12 +125,18 @@ class QuizController extends Controller
     {
         $this->authorizeOwner($quiz);
 
+        $retryAfter = $quiz->rateLimitRetryAfter();
+
         return response()->json([
             'status' => $quiz->status,
             'question_count' => $quiz->questions()->count(),
             'error' => $quiz->generation_error,
             'ready' => $quiz->isReady(),
             'failed' => $quiz->isFailed(),
+            'rate_limited' => $quiz->isRateLimited(),
+            'rate_limited_until' => $quiz->rate_limited_until?->toIso8601String(),
+            'retry_after_seconds' => $retryAfter,
+            'can_retry' => $quiz->isFailed() && $retryAfter === 0,
             'redirect_url' => route('quizzes.show', $quiz),
         ]);
     }
@@ -157,9 +163,17 @@ class QuizController extends Controller
                 ->with('status', 'Only failed quizzes can be retried.');
         }
 
+        if ($quiz->isRateLimited()) {
+            return redirect()
+                ->route('quizzes.show', $quiz)
+                ->with('status', 'The AI service is still cooling down. Please try again in '
+                    .$quiz->rateLimitRetryAfter().' seconds.');
+        }
+
         $quiz->update([
             'status' => Quiz::STATUS_QUEUED,
             'generation_error' => null,
+            'rate_limited_until' => null,
         ]);
 
         GenerateQuizFromMaterial::dispatch($quiz->id);

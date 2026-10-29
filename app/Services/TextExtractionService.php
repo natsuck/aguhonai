@@ -87,22 +87,39 @@ class TextExtractionService
         } catch (Throwable $exception) {
             $fallbackText = $this->extractPdfLiteralStrings($fullPath);
 
-            if ($fallbackText !== '') {
+            if ($this->isReadablePdfFallback($fallbackText)) {
                 return $fallbackText;
             }
 
             $message = $exception->getMessage();
 
             if (str_contains($message, 'Secured pdf')) {
-                throw new RuntimeException('This PDF is secured or password-protected. Please upload an unlocked PDF, DOCX, or TXT file.', previous: $exception);
+                throw new RuntimeException('This PDF is secured or password-protected and its text could not be read. Please upload an unlocked PDF, DOCX, or TXT file.', previous: $exception);
             }
 
             if (str_contains($message, 'Missing catalog')) {
-                throw new RuntimeException('This PDF appears to be corrupted or saved in an unsupported format. Please re-save it as a new PDF, or upload the material as DOCX or TXT.', previous: $exception);
+                throw new RuntimeException('This PDF could not be read reliably. Please re-save or print it as an unlocked PDF, or upload the material as DOCX or TXT.', previous: $exception);
             }
 
-            throw new RuntimeException('PDF text extraction failed: '.$message, previous: $exception);
+            throw new RuntimeException('This PDF could not be read reliably. Text extraction failed: '.$message, previous: $exception);
         }
+    }
+
+    private function isReadablePdfFallback(string $text): bool
+    {
+        if ($text === '' || preg_match('//u', $text) !== 1) {
+            return false;
+        }
+
+        $characterCount = mb_strlen($text);
+        $wordCount = preg_match_all('/[\p{L}\p{N}]{2,}/u', $text);
+        $letterCount = preg_match_all('/[\p{L}]/u', $text);
+
+        return $characterCount >= 100
+            && $wordCount !== false
+            && $wordCount >= 20
+            && $letterCount !== false
+            && ($letterCount / $characterCount) >= 0.45;
     }
 
     private function extractPdfLiteralStrings(string $fullPath): string

@@ -33,15 +33,48 @@
         @if (! $quiz->isReady())
             <section class="card p-6 sm:p-8 mb-8" data-status-url="{{ route('quizzes.status', $quiz) }}" data-created-at="{{ $quiz->created_at->timestamp }}">
                 @if ($quiz->isFailed())
+                    @php($retryAfter = $quiz->rateLimitRetryAfter())
                     <div class="max-w-2xl">
                         <span class="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-700">Generation failed</span>
                         <h2 class="mt-4 font-headline text-xl font-bold text-primary">AI could not generate a valid quiz</h2>
                         <p class="mt-2 text-sm text-ink-muted">{{ $quiz->generation_error }}</p>
-                        <form method="POST" action="{{ route('quizzes.retry', $quiz) }}" class="mt-6">
+                        <form method="POST" action="{{ route('quizzes.retry', $quiz) }}" class="mt-6"
+                              data-retry-form data-retry-at="{{ $quiz->rate_limited_until?->toIso8601String() }}">
                             @csrf
-                            <button class="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 transition">Retry Generation</button>
+                            <button type="submit" data-retry-button @disabled($retryAfter > 0)
+                                    class="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 transition disabled:cursor-not-allowed disabled:opacity-50">
+                                {{ $retryAfter > 0 ? 'Retry in '.$retryAfter.'s' : 'Retry Generation' }}
+                            </button>
                         </form>
                     </div>
+                    @if ($retryAfter > 0)
+                        <script>
+                            (() => {
+                                const form = document.querySelector('[data-retry-form]');
+                                const button = form?.querySelector('[data-retry-button]');
+                                const retryAt = Date.parse(form?.dataset.retryAt || '');
+
+                                if (!button || Number.isNaN(retryAt)) {
+                                    return;
+                                }
+
+                                const update = () => {
+                                    const remaining = Math.max(0, Math.ceil((retryAt - Date.now()) / 1000));
+
+                                    if (remaining <= 0) {
+                                        button.disabled = false;
+                                        button.textContent = 'Retry Generation';
+                                        return;
+                                    }
+
+                                    button.textContent = `Retry in ${remaining}s`;
+                                    window.setTimeout(update, 1000);
+                                };
+
+                                update();
+                            })();
+                        </script>
+                    @endif
                 @else
                     <div class="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
                         <div>

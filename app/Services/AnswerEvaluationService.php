@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Exceptions\OpenAIQuotaExceededException;
+use App\Exceptions\OpenAIRateLimitException;
 use Illuminate\Support\Facades\Log;
 use JsonException;
 use RuntimeException;
@@ -45,6 +47,15 @@ class AnswerEvaluationService
                 );
 
                 return $this->validate($this->decodeJson($response));
+            } catch (OpenAIRateLimitException|OpenAIQuotaExceededException $exception) {
+                $lastError = $exception->getMessage();
+
+                Log::warning('AI answer evaluation is rate limited; using deterministic fallback.', [
+                    'attempt' => $attempt,
+                    'message' => $lastError,
+                ]);
+
+                break;
             } catch (Throwable $exception) {
                 $lastError = $exception->getMessage();
 
@@ -140,6 +151,14 @@ class AnswerEvaluationService
                 );
 
                 return $this->mapBatchResponse($response, $pending);
+            } catch (OpenAIRateLimitException|OpenAIQuotaExceededException $exception) {
+                Log::warning('AI batch evaluation is rate limited; using deterministic fallback.', [
+                    'attempt' => $attempt,
+                    'message' => $exception->getMessage(),
+                    'item_count' => count($pending),
+                ]);
+
+                break;
             } catch (Throwable $exception) {
                 Log::warning('AI batch evaluation failed.', [
                     'attempt' => $attempt,

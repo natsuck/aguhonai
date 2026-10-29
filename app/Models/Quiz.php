@@ -30,6 +30,7 @@ class Quiz extends Model
         'ai_model',
         'ai_confidence',
         'generation_error',
+        'rate_limited_until',
         'generated_at',
     ];
 
@@ -37,6 +38,7 @@ class Quiz extends Model
     {
         return [
             'ai_confidence' => 'decimal:2',
+            'rate_limited_until' => 'datetime',
             'generated_at' => 'datetime',
         ];
     }
@@ -69,5 +71,20 @@ class Quiz extends Model
     public function isFailed(): bool
     {
         return $this->status === self::STATUS_FAILED;
+    }
+
+    public function isRateLimited(): bool
+    {
+        return $this->rate_limited_until !== null
+            && $this->rate_limited_until->isFuture();
+    }
+
+    public function rateLimitRetryAfter(): int
+    {
+        if (! $this->isRateLimited()) {
+            return 0;
+        }
+
+        return max(0, (int) ceil(now()->diffInSeconds($this->rate_limited_until)));
     }
 }

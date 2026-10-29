@@ -1,5 +1,7 @@
 <?php
 
+use App\Exceptions\OpenAIQuotaExceededException;
+use App\Exceptions\OpenAIRateLimitException;
 use App\Jobs\GenerateQuizFromMaterial;
 use App\Models\Quiz;
 use App\Models\QuizAttempt;
@@ -307,6 +309,117 @@ it('clears stale quiz items and stores a student-safe error after generation fai
         ->and($quiz->generated_at)->toBeNull()
         ->and($quiz->questions()->count())->toBe(0)
         ->and($quiz->flashcards()->count())->toBe(0);
+});
+
+it('shows a clear error when uploaded PDF text cannot be read reliably', function () {
+    $user = User::factory()->create();
+    $quiz = Quiz::query()->create([
+        'user_id' => $user->id,
+        'title' => 'Unreadable PDF',
+        'source_file' => 'uploads/unreadable.pdf',
+        'status' => Quiz::STATUS_PROCESSING,
+    ]);
+
+    (new GenerateQuizFromMaterial($quiz->id))->failed(
+        new RuntimeException('This PDF could not be read reliably. Text extraction failed.')
+    );
+
+    expect($quiz->fresh()->generation_error)
+        ->toBe('The uploaded PDF could not be read reliably. Please upload an unlocked PDF, or convert the material to DOCX or TXT.');
+});
+
+it('stores a cooldown when quiz generation is rate limited and blocks immediate retries', function () {
+    Queue::fake();
+
+    $user = User::factory()->create();
+    $quiz = Quiz::query()->create([
+        'user_id' => $user->id,
+        'title' => 'Rate Limited Quiz',
+        'source_file' => 'uploads/rate-limited.txt',
+        'status' => Quiz::STATUS_QUEUED,
+    ]);
+
+    $job = new GenerateQuizFromMaterial($quiz->id);
+    $job->failed(new OpenAIRateLimitException('Provider rate limit reached.', 45));
+
+    $quiz->refresh();
+
+    expect($quiz->status)->toBe(Quiz::STATUS_FAILED)
+        ->and($quiz->generation_error)->toContain('temporarily at capacity')
+        ->and($quiz->generation_error)->toContain('45 seconds')
+        ->and($quiz->generation_error)->not->toContain('Provider rate limit')
+        ->and($quiz->isRateLimited())->toBeTrue()
+        ->and($quiz->rateLimitRetryAfter())->toBeGreaterThan(40);
+
+    $this->actingAs($user)
+        ->get(route('quizzes.status', $quiz))
+        ->assertOk()
+        ->assertJsonPath('rate_limited', true)
+        ->assertJsonPath('can_retry', false)
+        ->assertJsonPath('retry_after_seconds', $quiz->rateLimitRetryAfter());
+
+    $this->actingAs($user)
+        ->post(route('quizzes.retry', $quiz))
+        ->assertRedirect(route('quizzes.show', $quiz))
+        ->assertSessionHas('status', fn (string $status) => str_contains($status, 'cooling down'));
+
+    expect($quiz->fresh()->status)->toBe(Quiz::STATUS_FAILED);
+    Queue::assertNothingPushed();
+});
+
+it('fails fast when the quiz generator reports a quota exhaustion', function () {
+    $user = User::factory()->create();
+    $quiz = Quiz::query()->create([
+        'user_id' => $user->id,
+        'title' => 'Quota Quiz',
+        'source_file' => 'uploads/quota.txt',
+        'status' => Quiz::STATUS_QUEUED,
+    ]);
+
+    $job = new GenerateQuizFromMaterial($quiz->id);
+    $job->failed(new OpenAIQuotaExceededException);
+
+    $quiz->refresh();
+
+    expect($quiz->status)->toBe(Quiz::STATUS_FAILED)
+        ->and($quiz->generation_error)->toContain('quota has been exhausted')
+        ->and($quiz->rate_limited_until)->toBeNull();
+});
+
+it('stops the generation job immediately when the provider is rate limited', function () {
+    $user = User::factory()->create();
+    $quiz = Quiz::query()->create([
+        'user_id' => $user->id,
+        'title' => 'Rate Limited Handle',
+        'source_file' => 'uploads/rate-limited-handle.txt',
+        'status' => Quiz::STATUS_QUEUED,
+    ]);
+
+    $extractor = new class extends TextExtractionService
+    {
+        public function extract(string $storedPath): string
+        {
+            return 'Extracted source material for quiz generation.';
+        }
+    };
+
+    $generator = new class extends QuizGeneratorService
+    {
+        public function __construct() {}
+
+        public function generate(string $documentText, ?int $questionCount = null): array
+        {
+            throw new OpenAIRateLimitException('Provider rate limit reached.', 20);
+        }
+    };
+
+    (new GenerateQuizFromMaterial($quiz->id))->handle($extractor, $generator);
+
+    $quiz->refresh();
+
+    expect($quiz->status)->toBe(Quiz::STATUS_FAILED)
+        ->and($quiz->generation_error)->toContain('temporarily at capacity')
+        ->and($quiz->rate_limited_until)->not->toBeNull();
 });
 
 it('allows only the owner to download the uploaded learning material', function () {

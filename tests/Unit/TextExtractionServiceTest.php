@@ -21,6 +21,14 @@ it('recovers literal text when a pdf has no usable catalog', function () {
     expect($text)->toContain('Networking connects devices and allows data exchange across systems.');
 });
 
+it('rejects unreadable raw PDF bytes instead of treating them as source text', function () {
+    Storage::fake('local');
+    Storage::disk('local')->put('uploads/material.pdf', "%PDF-1.4\n(".str_repeat("\xFF\x00\x91\xA4", 100).") Tj\n");
+
+    expect(fn () => app(TextExtractionService::class)->extract('uploads/material.pdf'))
+        ->toThrow(RuntimeException::class, 'PDF could not be read reliably');
+});
+
 it('extracts material from the configured default filesystem disk', function () {
     Storage::fake('s3');
     config(['filesystems.default' => 's3']);
@@ -37,7 +45,7 @@ it('extracts material from the configured default filesystem disk', function () 
 function encryptedPdf(): string
 {
     $content = 'Networking connects devices and allows data exchange across systems. ';
-    $stream = "BT /F1 12 Tf 72 720 Td (".str_repeat($content, 3).") Tj ET\n";
+    $stream = 'BT /F1 12 Tf 72 720 Td ('.str_repeat($content, 3).") Tj ET\n";
     $objects = [
         "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
         "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",

@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Exceptions\OpenAIQuotaExceededException;
+use App\Exceptions\OpenAIRateLimitException;
 use App\Exceptions\OpenAIRequestException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -62,6 +64,16 @@ class QuizGeneratorService
                 $this->cacheQuiz($cacheKey, $validated);
 
                 return $validated;
+            } catch (OpenAIRateLimitException|OpenAIQuotaExceededException $exception) {
+                Log::warning('AI quiz generation stopped by a provider limit.', [
+                    'attempt' => $attempt,
+                    'message' => $exception->getMessage(),
+                    'retry_after' => $exception instanceof OpenAIRateLimitException
+                        ? $exception->retryAfter
+                        : null,
+                ]);
+
+                throw $exception;
             } catch (OpenAIRequestException $exception) {
                 Log::error('AI quiz generation could not reach the configured provider.', [
                     'attempt' => $attempt,

@@ -41,6 +41,11 @@ return [
         'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
         'timeout' => env('OPENAI_TIMEOUT', 30),
         'retries' => env('OPENAI_RETRIES', 2),
+        'rate_limit_max_retries' => env('OPENAI_RATE_LIMIT_MAX_RETRIES', env('OPENAI_RETRIES', 2)),
+        'rate_limit_base_delay' => env('OPENAI_RATE_LIMIT_BASE_DELAY', 2),
+        'rate_limit_max_delay' => env('OPENAI_RATE_LIMIT_MAX_DELAY', 30),
+        'rate_limit_inline_max_wait' => env('OPENAI_RATE_LIMIT_INLINE_MAX_WAIT', 10),
+        'retry_jitter' => env('OPENAI_RETRY_JITTER', 0.2),
         'temperature' => env('OPENAI_TEMPERATURE', 0.2),
         'max_document_chars' => env('OPENAI_MAX_DOCUMENT_CHARS', 12000),
 

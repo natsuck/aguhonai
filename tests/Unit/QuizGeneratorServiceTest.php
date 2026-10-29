@@ -1,5 +1,6 @@
 <?php
 
+use App\Exceptions\OpenAIRateLimitException;
 use App\Exceptions\OpenAIRequestException;
 use App\Services\OpenAIService;
 use App\Services\QuizGeneratorService;
@@ -118,6 +119,26 @@ it('does not retry quiz repair prompts when the OpenAI API cannot be reached', f
 
     expect(fn () => app(QuizGeneratorService::class)->generate('Source material.'))
         ->toThrow(OpenAIRequestException::class, 'internet/DNS connectivity')
+        ->and($calls->count)->toBe(1);
+});
+
+it('does not retry quiz repair prompts when the provider is rate limited', function () {
+    config(['services.openai.quiz_json_retries' => 3]);
+    $calls = (object) ['count' => 0];
+
+    $this->instance(OpenAIService::class, new class($calls) extends OpenAIService
+    {
+        public function __construct(private readonly object $calls) {}
+
+        public function generate(string $prompt, array $options = [], ?string $model = null, bool $jsonMode = false, ?array $schema = null): string
+        {
+            $this->calls->count++;
+            throw new OpenAIRateLimitException('The AI service is rate limited.', 30);
+        }
+    });
+
+    expect(fn () => app(QuizGeneratorService::class)->generate('Source material.'))
+        ->toThrow(OpenAIRateLimitException::class)
         ->and($calls->count)->toBe(1);
 });
 
