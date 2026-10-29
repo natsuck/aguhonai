@@ -69,7 +69,7 @@ confidence is not calibrated and is not supplied for current instrument mappings
 
 ## Local setup
 
-Requirements: PHP 8.2+, Composer, Node.js 20+, npm, and MySQL.
+Requirements: PHP 8.2+ with the `gd` and `zip` extensions, Composer, Node.js 20+, npm, and MySQL.
 
 ```powershell
 composer install
@@ -140,6 +140,7 @@ Laravel version also does not meet Laravel Cloud's documented managed-queue mini
 After completing the prerequisites, a typical Laravel Cloud configuration is:
 
 - **Runtime:** supported PHP runtime compatible with the application
+- **PHP extensions:** `gd` and `zip` are required for DOCX text extraction
 - **Build command:** `composer install --no-dev && npm ci && npm run build`
 - **Deploy command:** `php artisan migrate --force`
 - **Persistent data:** attached Cloud database and private object-storage bucket
@@ -193,6 +194,9 @@ AI settings are configured using `OPENAI_*` variables in `.env` (see `.env.examp
 - `OPENAI_MAX_DOCUMENT_CHARS` — maximum extracted source text sent to quiz generation (default: 12,000 characters)
 - `OPENAI_QUIZ_JOB_TIMEOUT` — quiz queue-job timeout; keep the worker timeout aligned and the queue `retry_after` higher (defaults: 1,800 and 1,900 seconds)
 - `OPENAI_QUIZ_JSON_RETRIES` — retries for invalid or incomplete AI responses
+
+PDF text extraction also uses `PDF_MAX_DECODE_BYTES` (default: 104,857,600) to cap each
+decompressed PDF stream and protect workers from decompression bombs.
 
 Students choose 10, 15, 20, or 30 document-grounded multiple-choice questions when uploading material,
 with 15 selected by default. Each quiz also generates 10 flashcards. The document text is capped at the

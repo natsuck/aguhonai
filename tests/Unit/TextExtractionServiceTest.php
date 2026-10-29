@@ -29,6 +29,20 @@ it('rejects unreadable raw PDF bytes instead of treating them as source text', f
         ->toThrow(RuntimeException::class, 'PDF could not be read reliably');
 });
 
+it('extracts paragraphs and table text from a docx document', function () {
+    Storage::fake('local');
+    Storage::disk('local')->put(
+        'uploads/material.docx',
+        docxWithText('Networking connects devices and allows data exchange across systems.')
+    );
+
+    $text = app(TextExtractionService::class)->extract('uploads/material.docx');
+
+    expect($text)
+        ->toContain('Networking connects devices and allows data exchange across systems.')
+        ->toContain('OSI model');
+});
+
 it('extracts material from the configured default filesystem disk', function () {
     Storage::fake('s3');
     config(['filesystems.default' => 's3']);
@@ -41,6 +55,67 @@ it('extracts material from the configured default filesystem disk', function () 
 
     expect($text)->toContain('Networking connects devices and allows data exchange across systems.');
 });
+
+function docxWithText(string $text): string
+{
+    $path = tempnam(sys_get_temp_dir(), 'quiz-docx-');
+
+    if ($path === false) {
+        throw new RuntimeException('Unable to create a temporary DOCX fixture.');
+    }
+
+    $zip = new ZipArchive;
+    $opened = $zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+
+    if ($opened !== true) {
+        unlink($path);
+
+        throw new RuntimeException('Unable to create a DOCX fixture.');
+    }
+
+    $content = htmlspecialchars(str_repeat($text.' ', 3), ENT_XML1 | ENT_QUOTES, 'UTF-8');
+
+    $zip->addFromString('[Content_Types].xml', <<<'XML'
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+    <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+    <Default Extension="xml" ContentType="application/xml"/>
+    <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>
+XML);
+
+    $zip->addFromString('_rels/.rels', <<<'XML'
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>
+XML);
+
+    $zip->addFromString('word/document.xml', <<<XML
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+    <w:body>
+        <w:p><w:r><w:t>{$content}</w:t></w:r></w:p>
+        <w:tbl>
+            <w:tr>
+                <w:tc><w:p><w:r><w:t>OSI model</w:t></w:r></w:p></w:tc>
+            </w:tr>
+        </w:tbl>
+    </w:body>
+</w:document>
+XML);
+
+    $zip->close();
+
+    $docx = file_get_contents($path);
+    unlink($path);
+
+    if ($docx === false) {
+        throw new RuntimeException('Unable to read the DOCX fixture.');
+    }
+
+    return $docx;
+}
 
 function encryptedPdf(): string
 {

@@ -82,6 +82,8 @@ class TextExtractionService
         try {
             $config = new Config;
             $config->setIgnoreEncryption(true);
+            $config->setRetainImageContent(false);
+            $config->setDecodeMemoryLimit(max(0, (int) config('services.pdf.max_decode_bytes', 104857600)));
 
             return (new Parser([], $config))->parseFile($fullPath)->getText();
         } catch (Throwable $exception) {

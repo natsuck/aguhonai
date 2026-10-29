@@ -35,6 +35,10 @@ return [
         ],
     ],
 
+    'pdf' => [
+        'max_decode_bytes' => env('PDF_MAX_DECODE_BYTES', 104857600),
+    ],
+
     'openai' => [
         'key' => env('OPENAI_API_KEY'),
         'organization' => env('OPENAI_ORGANIZATION'),
