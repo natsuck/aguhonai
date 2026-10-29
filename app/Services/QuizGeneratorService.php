@@ -16,13 +16,25 @@ class QuizGeneratorService
     /**
      * @return array{mcqs: array<int, array{question: string, choices: array<int, string>, answer: string, explanation: string}>, flashcards: array<int, array{front: string, back: string}>, confidence: float}
      */
-    public function generate(string $documentText): array
+    public function generate(string $documentText, ?int $questionCount = null): array
     {
+        $minimumQuestions = (int) config('services.openai.quiz_min_questions', 5);
+        $maximumQuestions = (int) config('services.openai.quiz_max_questions', 30);
+        $questionCount ??= (int) config('services.openai.quiz_default_questions', 15);
+
+        if ($questionCount < $minimumQuestions || $questionCount > $maximumQuestions) {
+            throw new RuntimeException(sprintf(
+                'Quiz question count must be between %d and %d.',
+                $minimumQuestions,
+                $maximumQuestions
+            ));
+        }
+
         $attempts = (int) config('services.openai.quiz_json_retries', 3);
         $numPredict = (int) config('services.openai.quiz_max_tokens', 6000);
         $model = (string) config('services.openai.models.quiz', 'gpt-4o-mini');
-        $cacheKey = $this->cacheKey($documentText, $numPredict, $model);
-        $prompt = $this->buildPrompt($documentText);
+        $cacheKey = $this->cacheKey($documentText, $numPredict, $model, $questionCount);
+        $prompt = $this->buildPrompt($documentText, $questionCount);
         $lastError = 'Unknown AI generation error.';
         $lastResponse = '';
 
@@ -47,10 +59,10 @@ class QuizGeneratorService
                     ],
                     $model,
                     false,
-                    $this->quizSchema()
+                    $this->quizSchema($questionCount)
                 );
 
-                $validated = $this->validate($this->decodeJson($lastResponse));
+                $validated = $this->validate($this->decodeJson($lastResponse), $questionCount);
 
                 $this->cacheQuiz($cacheKey, $validated);
 
@@ -71,7 +83,7 @@ class QuizGeneratorService
                     'response_preview' => mb_substr($lastResponse, 0, 500),
                 ]);
 
-                $prompt = $this->buildRepairPrompt($documentText, $lastResponse, $lastError);
+                $prompt = $this->buildRepairPrompt($documentText, $lastResponse, $lastError, $questionCount);
             }
         }
 
@@ -83,9 +95,9 @@ class QuizGeneratorService
      * and the exact document text so re-uploading the same material skips
      * the multi-second LLM call entirely.
      */
-    private function cacheKey(string $documentText, int $numPredict, string $model): string
+    private function cacheKey(string $documentText, int $numPredict, string $model, int $questionCount): string
     {
-        return 'quiz_gen:mcq-flashcards-v2:'.hash('sha256', $model.'|0.1|'.$numPredict.'|'.$documentText);
+        return 'quiz_gen:mcq-flashcards-v3:'.hash('sha256', $model.'|0.1|'.$numPredict.'|'.$questionCount.'|'.$documentText);
     }
 
     private function cacheQuiz(string $cacheKey, array $quiz): void
@@ -105,7 +117,7 @@ class QuizGeneratorService
      *
      * @return array<string, mixed>
      */
-    private function quizSchema(): array
+    private function quizSchema(int $questionCount): array
     {
         $mcqItem = [
             'type' => 'object',
@@ -138,8 +150,8 @@ class QuizGeneratorService
                 'confidence' => ['type' => 'number'],
                 'mcqs' => [
                     'type' => 'array',
-                    'minItems' => 10,
-                    'maxItems' => 15,
+                    'minItems' => $questionCount,
+                    'maxItems' => $questionCount,
                     'items' => $mcqItem,
                 ],
                 'flashcards' => [
@@ -153,19 +165,19 @@ class QuizGeneratorService
         ];
     }
 
-    private function buildPrompt(string $documentText): string
+    private function buildPrompt(string $documentText, int $questionCount): string
     {
         return <<<PROMPT
 You are an academic quiz generator for a thesis-grade education system.
 
 Generate exactly:
-- 15 multiple choice questions for a graded quiz
+- {$questionCount} multiple choice questions for a graded quiz
 - 10 flashcards for a separate study mode
 
 Rules:
 - Questions and answers must come ONLY from the provided document.
 - Do not use outside knowledge.
-- The exact item counts above are mandatory; never return fewer items.
+- The exact item counts above are mandatory; return exactly {$questionCount} MCQs and 10 flashcards.
 - If the document is concise, test different details or aspects that it explicitly supports, without adding outside facts.
 - MCQ choices must contain exactly 4 clear choices.
 - The MCQ answer must exactly match one of the choices.
@@ -202,7 +214,7 @@ DOCUMENT:
 PROMPT;
     }
 
-    private function buildRepairPrompt(string $documentText, string $badResponse, string $error): string
+    private function buildRepairPrompt(string $documentText, string $badResponse, string $error, int $questionCount): string
     {
         $preview = mb_substr($badResponse, 0, 2500);
 
@@ -216,7 +228,7 @@ Invalid response preview:
 {$preview}
 
 Regenerate the quiz using ONLY the document below.
-Return STRICT JSON only with exactly 15 MCQs and exactly 10 flashcards. These counts are mandatory; do not return fewer items.
+Return STRICT JSON only with exactly {$questionCount} MCQs and exactly 10 flashcards. These counts are mandatory; do not return fewer items.
 Every MCQ answer must exactly match one of its four choices and include a short document-grounded explanation.
 Each flashcard must include a concise front and back.
 If the document is concise, test different explicitly stated details or aspects rather than omitting items or adding outside facts.
@@ -263,15 +275,16 @@ PROMPT;
      * @param  array<string, mixed>  $data
      * @return array{mcqs: array<int, array{question: string, choices: array<int, string>, answer: string, explanation: string}>, flashcards: array<int, array{front: string, back: string}>, confidence: float}
      */
-    private function validate(array $data): array
+    private function validate(array $data, int $questionCount): array
     {
         if (! isset($data['mcqs'], $data['flashcards']) || ! is_array($data['mcqs']) || ! is_array($data['flashcards'])) {
             throw new RuntimeException('Quiz JSON must include mcqs and flashcards arrays.');
         }
 
-        if (count($data['mcqs']) !== 15 || count($data['flashcards']) !== 10) {
+        if (count($data['mcqs']) !== $questionCount || count($data['flashcards']) !== 10) {
             throw new RuntimeException(sprintf(
-                'Quiz JSON must contain exactly 15 MCQs and 10 flashcards; received %d MCQs and %d flashcards.',
+                'Quiz JSON must contain exactly %d MCQs and 10 flashcards; received %d MCQs and %d flashcards.',
+                $questionCount,
                 count($data['mcqs']),
                 count($data['flashcards'])
             ));

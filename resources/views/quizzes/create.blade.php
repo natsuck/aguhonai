@@ -22,6 +22,19 @@
             </div>
 
             <div class="mt-6">
+                <label for="question_count" class="block text-sm font-semibold text-primary-container">Number of Questions</label>
+                <select id="question_count" name="question_count" class="mt-2 block w-full rounded-xl border-surface-high bg-white text-ink shadow-sm focus:border-accent focus:ring-accent">
+                    @foreach ($questionOptions as $count)
+                        <option value="{{ $count }}" @selected(old('question_count', $defaultQuestions) == $count)>{{ $count }} questions</option>
+                    @endforeach
+                </select>
+                <p class="mt-1 text-sm text-ink-muted">Choose between {{ $minimumQuestions }} and {{ $maximumQuestions }} questions.</p>
+                @error('question_count')
+                    <p class="mt-2 text-sm text-rose-600">{{ $message }}</p>
+                @enderror
+            </div>
+
+            <div class="mt-6">
                 <label for="material" class="block text-sm font-semibold text-primary-container">Learning Material</label>
                 <label id="drop-zone" for="material" class="mt-2 flex min-h-64 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-surface-high bg-surface px-6 py-10 text-center transition hover:border-accent hover:bg-accent/10">
                     <x-icon name="file-text" class="h-12 w-12 text-accent"/>

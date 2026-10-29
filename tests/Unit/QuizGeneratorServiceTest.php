@@ -50,6 +50,44 @@ it('generates 15 explained mcqs and 10 separate flashcards without difficulty la
         ->and($quiz['mcqs'][0])->not->toHaveKey('difficulty');
 });
 
+it('uses the requested question count in the prompt schema and validation', function () {
+    config(['services.openai.quiz_json_retries' => 1]);
+    Cache::flush();
+
+    $response = json_encode([
+        'confidence' => 90,
+        'mcqs' => array_map(fn (int $index): array => [
+            'question' => 'Question '.$index,
+            'choices' => ['Correct '.$index, 'Option B', 'Option C', 'Option D'],
+            'answer' => 'Correct '.$index,
+            'explanation' => 'Supported by the source material.',
+        ], range(1, 10)),
+        'flashcards' => array_map(fn (int $index): array => [
+            'front' => 'Flashcard '.$index,
+            'back' => 'A source-grounded answer.',
+        ], range(1, 10)),
+    ], JSON_THROW_ON_ERROR);
+
+    $this->instance(OpenAIService::class, new class($response) extends OpenAIService
+    {
+        public function __construct(private readonly string $response) {}
+
+        public function generate(string $prompt, array $options = [], ?string $model = null, bool $jsonMode = false, ?array $schema = null): string
+        {
+            expect($prompt)->toContain('10 multiple choice questions')
+                ->and($schema['properties']['mcqs']['minItems'])->toBe(10)
+                ->and($schema['properties']['mcqs']['maxItems'])->toBe(10);
+
+            return $this->response;
+        }
+    });
+
+    $quiz = app(QuizGeneratorService::class)->generate('Source material.', 10);
+
+    expect($quiz['mcqs'])->toHaveCount(10)
+        ->and($quiz['flashcards'])->toHaveCount(10);
+});
+
 it('does not retry quiz repair prompts when the OpenAI API cannot be reached', function () {
     config(['services.openai.quiz_json_retries' => 3]);
     $calls = (object) ['count' => 0];

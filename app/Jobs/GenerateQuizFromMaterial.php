@@ -57,7 +57,7 @@ class GenerateQuizFromMaterial implements ShouldQueue
             'extracted_characters' => mb_strlen($extractedText),
         ]);
 
-        $generatedQuiz = $generator->generate($extractedText);
+        $generatedQuiz = $generator->generate($extractedText, (int) $quiz->requested_question_count);
 
         DB::transaction(function () use ($quiz, $extractedText, $generatedQuiz): void {
             $quiz->questions()->delete();

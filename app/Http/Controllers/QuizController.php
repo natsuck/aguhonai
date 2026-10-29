@@ -38,7 +38,19 @@ class QuizController extends Controller
 
     public function create(): View
     {
-        return view('quizzes.create');
+        $minimumQuestions = (int) config('services.openai.quiz_min_questions', 5);
+        $maximumQuestions = (int) config('services.openai.quiz_max_questions', 30);
+        $defaultQuestions = (int) config('services.openai.quiz_default_questions', 15);
+        $questionOptions = range($minimumQuestions, $maximumQuestions, 5);
+
+        foreach ([$defaultQuestions, $maximumQuestions] as $option) {
+            if (! in_array($option, $questionOptions, true)) {
+                $questionOptions[] = $option;
+            }
+        }
+        sort($questionOptions);
+
+        return view('quizzes.create', compact('questionOptions', 'defaultQuestions', 'minimumQuestions', 'maximumQuestions'));
     }
 
     public function store(Request $request): RedirectResponse
@@ -46,6 +58,12 @@ class QuizController extends Controller
         $validated = $request->validate([
             'title' => ['nullable', 'string', 'max:120'],
             'material' => ['required', 'file', 'mimes:pdf,docx,txt', 'max:10240'],
+            'question_count' => [
+                'sometimes',
+                'integer',
+                'min:'.(int) config('services.openai.quiz_min_questions', 5),
+                'max:'.(int) config('services.openai.quiz_max_questions', 30),
+            ],
         ]);
 
         $file = $request->file('material');
@@ -76,6 +94,7 @@ class QuizController extends Controller
             'title' => $title,
             'source_file' => $path,
             'original_filename' => $file->getClientOriginalName(),
+            'requested_question_count' => (int) ($validated['question_count'] ?? config('services.openai.quiz_default_questions', 15)),
             'status' => Quiz::STATUS_QUEUED,
             'ai_model' => config('services.openai.models.quiz', 'gpt-4o-mini'),
         ]);

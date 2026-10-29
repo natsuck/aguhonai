@@ -24,6 +24,7 @@ it('queues quiz generation from an uploaded learning material', function () {
 
     $response = $this->actingAs($user)->post(route('quizzes.store'), [
         'title' => 'Networking Basics',
+        'question_count' => 10,
         'material' => $file,
     ]);
 
@@ -34,10 +35,29 @@ it('queues quiz generation from an uploaded learning material', function () {
         ->not->toBeNull()
         ->user_id->toBe($user->id)
         ->title->toBe('Networking Basics')
+        ->requested_question_count->toBe(10)
         ->status->toBe(Quiz::STATUS_QUEUED);
 
     Storage::disk('local')->assertExists($quiz->source_file);
     Queue::assertPushed(GenerateQuizFromMaterial::class);
+});
+
+it('rejects a selected quiz question count outside the configured range', function () {
+    Storage::fake('local');
+    Queue::fake();
+
+    $user = User::factory()->create();
+
+    $this->actingAs($user)->from(route('quizzes.create'))->post(route('quizzes.store'), [
+        'question_count' => 31,
+        'material' => UploadedFile::fake()->createWithContent(
+            'networking.txt',
+            str_repeat('Networking connects devices and allows data exchange across systems. ', 20)
+        ),
+    ])->assertSessionHasErrors('question_count');
+
+    expect(Quiz::query()->count())->toBe(0);
+    Queue::assertNothingPushed();
 });
 
 it('stores quiz source material on the configured default filesystem disk', function () {
@@ -186,6 +206,7 @@ it('saves generated mcqs and flashcards separately and makes the quiz ready to a
         'user_id' => $user->id,
         'title' => 'Software Quality',
         'source_file' => 'uploads/quality.txt',
+        'requested_question_count' => 10,
         'status' => Quiz::STATUS_QUEUED,
     ]);
 
@@ -196,7 +217,7 @@ it('saves generated mcqs and flashcards separately and makes the quiz ready to a
             'choices' => ['Correct', 'Option B', 'Option C', 'Option D'],
             'answer' => 'Correct',
             'explanation' => 'This is supported by the source.',
-        ], range(1, 15)),
+        ], range(1, 10)),
         'flashcards' => array_map(fn (int $index): array => [
             'front' => 'Front '.$index,
             'back' => 'Back '.$index,
@@ -214,8 +235,10 @@ it('saves generated mcqs and flashcards separately and makes the quiz ready to a
     {
         public function __construct(private readonly array $generated) {}
 
-        public function generate(string $documentText): array
+        public function generate(string $documentText, ?int $questionCount = null): array
         {
+            expect($questionCount)->toBe(10);
+
             return $this->generated;
         }
     };
@@ -225,7 +248,7 @@ it('saves generated mcqs and flashcards separately and makes the quiz ready to a
     $quiz->refresh();
 
     expect($quiz->status)->toBe(Quiz::STATUS_READY)
-        ->and($quiz->questions)->toHaveCount(15)
+        ->and($quiz->questions)->toHaveCount(10)
         ->and($quiz->questions->every(fn (QuizQuestion $question) => $question->isMcq() && $question->explanation !== null))
         ->toBeTrue()
         ->and($quiz->flashcards)->toHaveCount(10);

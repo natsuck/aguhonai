@@ -563,3 +563,38 @@ it('restricts assessment analytics to administrators', function () {
         ->assertJsonPath('programs.0.program_code', 'BSIT')
         ->assertJsonPath('programs.1.program_code', 'BSCS');
 });
+
+it('lists recent assessment submissions first and displays Manila local time', function () {
+    $olderStudent = User::factory()->create(['name' => 'Older Submission Student']);
+    $newerStudent = User::factory()->create(['name' => 'Newer Submission Student']);
+    $admin = User::factory()->admin()->consented()->create([
+        'email_verified_at' => now(),
+    ]);
+
+    AssessmentResult::query()->create([
+        'user_id' => $newerStudent->id,
+        'program_code' => 'BSCS',
+        'program_name' => 'Computer Science',
+        'confidence' => 80,
+        'source' => 'openai',
+        'completed_at' => '2026-10-30 01:00:00',
+    ]);
+    AssessmentResult::query()->create([
+        'user_id' => $olderStudent->id,
+        'program_code' => 'BSIT',
+        'program_name' => 'Information Technology',
+        'confidence' => 80,
+        'source' => 'openai',
+        'completed_at' => '2026-10-29 12:00:00',
+    ]);
+
+    $response = $this->actingAs($admin)->get(route('admin.analytics'));
+    $content = $response->getContent();
+
+    $response->assertOk()
+        ->assertSee('Oct 30, 2026 9:00 AM')
+        ->assertSee('Oct 29, 2026 8:00 PM');
+
+    expect(strpos($content, 'Newer Submission Student'))
+        ->toBeLessThan(strpos($content, 'Older Submission Student'));
+});

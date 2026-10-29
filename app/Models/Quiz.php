@@ -24,6 +24,7 @@ class Quiz extends Model
         'title',
         'source_file',
         'original_filename',
+        'requested_question_count',
         'extracted_text',
         'status',
         'ai_model',

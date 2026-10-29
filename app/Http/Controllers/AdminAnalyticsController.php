@@ -65,6 +65,7 @@ class AdminAnalyticsController extends Controller
 
         $recentResults = AssessmentResult::query()
             ->with('user:id,name,email')
+            ->orderByDesc('completed_at')
             ->orderByDesc('id')
             ->limit(8)
             ->get();

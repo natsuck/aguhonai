@@ -60,6 +60,9 @@ return [
 
         'assessment_max_tokens' => env('OPENAI_ASSESSMENT_MAX_TOKENS', 1200),
         'quiz_max_tokens' => env('OPENAI_QUIZ_MAX_TOKENS', 6000),
+        'quiz_min_questions' => env('OPENAI_QUIZ_MIN_QUESTIONS', 5),
+        'quiz_max_questions' => env('OPENAI_QUIZ_MAX_QUESTIONS', 30),
+        'quiz_default_questions' => env('OPENAI_QUIZ_DEFAULT_QUESTIONS', 15),
         'quiz_json_retries' => env('OPENAI_QUIZ_JSON_RETRIES', 3),
         'quiz_job_timeout' => env('OPENAI_QUIZ_JOB_TIMEOUT', 1800),
         'answer_json_retries' => env('OPENAI_ANSWER_JSON_RETRIES', 2),

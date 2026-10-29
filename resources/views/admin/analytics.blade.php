@@ -126,7 +126,7 @@
                                                 </div>
                                             </div>
                                         </td>
-                                        <td class="py-4 px-6 text-ink-muted text-xs">{{ $result->completed_at?->format('M d, Y g:i A') }}</td>
+                                        <td class="py-4 px-6 text-ink-muted text-xs">{{ $result->completed_at?->timezone('Asia/Manila')->format('M d, Y g:i A') }}</td>
                                         <td class="py-4 px-6">
                                             @if ($profile)
                                                 <span class="bg-surface-low text-primary px-3 py-1 rounded-full text-xs font-semibold border border-surface-high">
@@ -160,7 +160,7 @@
                                     <div class="min-w-0">
                                         <p class="font-bold text-primary text-sm truncate">{{ $result->user->name ?? 'Unknown' }}</p>
                                         <p class="text-xs text-ink-muted truncate">{{ $result->program_code }} · {{ $result->program_name }}</p>
-                                        <span class="text-[10px] text-ink-faint">{{ $result->completed_at?->format('M d, Y') }}</span>
+                                        <span class="text-[10px] text-ink-faint">{{ $result->completed_at?->timezone('Asia/Manila')->format('M d, Y') }}</span>
                                     </div>
                                 </div>
                                 <div class="text-right shrink-0">

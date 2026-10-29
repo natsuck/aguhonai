@@ -189,14 +189,16 @@ AI settings are configured using `OPENAI_*` variables in `.env` (see `.env.examp
   `OPENAI_MODEL_ANSWER` — per-task model selection
 - `OPENAI_TIMEOUT`, `OPENAI_RETRIES`, `OPENAI_TEMPERATURE` — request behavior
 - `OPENAI_ASSESSMENT_MAX_TOKENS`, `OPENAI_QUIZ_MAX_TOKENS` — response budgets
+- `OPENAI_QUIZ_MIN_QUESTIONS`, `OPENAI_QUIZ_MAX_QUESTIONS`,
+  `OPENAI_QUIZ_DEFAULT_QUESTIONS` — allowed MCQ count range and upload-form default
 - `OPENAI_QUIZ_CACHE_TTL` — cache duration for validated generated quizzes
 - `OPENAI_MAX_DOCUMENT_CHARS` — maximum extracted source text sent to quiz generation (default: 12,000 characters)
 - `OPENAI_QUIZ_JOB_TIMEOUT` — quiz queue-job timeout; keep the worker timeout aligned and the queue `retry_after` higher (defaults: 1,800 and 1,900 seconds)
 - `OPENAI_QUIZ_JSON_RETRIES` — retries for invalid or incomplete AI responses
 
-Each quiz is generated from the uploaded material as exactly 15 document-grounded multiple-choice
-questions and 10 flashcards. The document text is capped at the configured character limit before
-it is sent to the AI.
+Students choose the number of document-grounded multiple-choice questions when uploading material.
+The default allowed range is 5-30 questions, with 15 selected by default; each quiz also generates
+10 flashcards. The document text is capped at the configured character limit before it is sent to the AI.
 
 ## Tests and quality checks
 
