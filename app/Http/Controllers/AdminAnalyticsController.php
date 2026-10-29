@@ -67,8 +67,7 @@ class AdminAnalyticsController extends Controller
             ->with('user:id,name,email')
             ->orderByDesc('completed_at')
             ->orderByDesc('id')
-            ->limit(8)
-            ->get();
+            ->paginate(8);
 
         return view('admin.analytics', compact(
             'totalAssessments',

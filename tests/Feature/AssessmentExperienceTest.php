@@ -598,3 +598,36 @@ it('lists recent assessment submissions first and displays Manila local time', f
     expect(strpos($content, 'Newer Submission Student'))
         ->toBeLessThan(strpos($content, 'Older Submission Student'));
 });
+
+it('paginates admin assessment submissions with the newest results first', function () {
+    $admin = User::factory()->admin()->consented()->create([
+        'email_verified_at' => now(),
+    ]);
+
+    foreach (range(1, 10) as $index) {
+        $student = User::factory()->create(['name' => 'Submission Student '.$index]);
+
+        AssessmentResult::query()->create([
+            'user_id' => $student->id,
+            'program_code' => 'BSIT',
+            'program_name' => 'Information Technology',
+            'confidence' => 80,
+            'source' => 'openai',
+            'completed_at' => now()->subMinutes($index),
+        ]);
+    }
+
+    $this->actingAs($admin)
+        ->get(route('admin.analytics'))
+        ->assertOk()
+        ->assertSee('10 records')
+        ->assertSee('Submission Student 1')
+        ->assertDontSee('Submission Student 9')
+        ->assertSee('Next');
+
+    $this->get(route('admin.analytics', ['page' => 2]))
+        ->assertOk()
+        ->assertSee('Submission Student 9')
+        ->assertSee('Submission Student 10')
+        ->assertDontSee('Submission Student 1</p>');
+});

@@ -18,16 +18,11 @@ class QuizGeneratorService
      */
     public function generate(string $documentText, ?int $questionCount = null): array
     {
-        $minimumQuestions = (int) config('services.openai.quiz_min_questions', 5);
-        $maximumQuestions = (int) config('services.openai.quiz_max_questions', 30);
         $questionCount ??= (int) config('services.openai.quiz_default_questions', 15);
+        $questionOptions = config('services.openai.quiz_question_options', [10, 15, 20, 30]);
 
-        if ($questionCount < $minimumQuestions || $questionCount > $maximumQuestions) {
-            throw new RuntimeException(sprintf(
-                'Quiz question count must be between %d and %d.',
-                $minimumQuestions,
-                $maximumQuestions
-            ));
+        if (! in_array($questionCount, $questionOptions, true)) {
+            throw new RuntimeException('Quiz question count must be one of: '.implode(', ', $questionOptions).'.');
         }
 
         $attempts = (int) config('services.openai.quiz_json_retries', 3);

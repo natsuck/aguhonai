@@ -42,19 +42,30 @@ it('queues quiz generation from an uploaded learning material', function () {
     Queue::assertPushed(GenerateQuizFromMaterial::class);
 });
 
-it('rejects a selected quiz question count outside the configured range', function () {
+it('allows only the supported quiz question counts', function () {
     Storage::fake('local');
     Queue::fake();
 
     $user = User::factory()->create();
 
-    $this->actingAs($user)->from(route('quizzes.create'))->post(route('quizzes.store'), [
-        'question_count' => 31,
-        'material' => UploadedFile::fake()->createWithContent(
-            'networking.txt',
-            str_repeat('Networking connects devices and allows data exchange across systems. ', 20)
-        ),
-    ])->assertSessionHasErrors('question_count');
+    $this->actingAs($user)
+        ->get(route('quizzes.create'))
+        ->assertOk()
+        ->assertSee('10 questions')
+        ->assertSee('15 questions')
+        ->assertSee('20 questions')
+        ->assertSee('30 questions')
+        ->assertDontSee('25 questions');
+
+    foreach ([5, 25, 31] as $invalidCount) {
+        $this->from(route('quizzes.create'))->post(route('quizzes.store'), [
+            'question_count' => $invalidCount,
+            'material' => UploadedFile::fake()->createWithContent(
+                'networking.txt',
+                str_repeat('Networking connects devices and allows data exchange across systems. ', 20)
+            ),
+        ])->assertSessionHasErrors('question_count');
+    }
 
     expect(Quiz::query()->count())->toBe(0);
     Queue::assertNothingPushed();

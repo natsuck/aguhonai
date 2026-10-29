@@ -88,6 +88,19 @@ it('uses the requested question count in the prompt schema and validation', func
         ->and($quiz['flashcards'])->toHaveCount(10);
 });
 
+it('rejects unsupported question counts before making an AI request', function () {
+    $this->instance(OpenAIService::class, new class extends OpenAIService
+    {
+        public function generate(string $prompt, array $options = [], ?string $model = null, bool $jsonMode = false, ?array $schema = null): string
+        {
+            throw new RuntimeException('An unsupported count must not reach the AI service.');
+        }
+    });
+
+    expect(fn () => app(QuizGeneratorService::class)->generate('Source material.', 25))
+        ->toThrow(RuntimeException::class, 'Quiz question count must be one of: 10, 15, 20, 30.');
+});
+
 it('does not retry quiz repair prompts when the OpenAI API cannot be reached', function () {
     config(['services.openai.quiz_json_retries' => 3]);
     $calls = (object) ['count' => 0];

@@ -86,7 +86,7 @@
                             <p class="text-xs text-ink-faint">Real-time student assessment logs</p>
                         </div>
                         <span class="text-xs font-semibold text-primary-container bg-surface-low px-3 py-1 rounded-full border border-surface-high">
-                            {{ $recentResults->count() }} records
+                            {{ number_format($recentResults->total()) }} records
                         </span>
                     </div>
 
@@ -174,6 +174,12 @@
                             </div>
                         @endforeach
                     </div>
+
+                    @if ($recentResults->hasPages())
+                        <div class="border-t border-surface-low p-4 sm:p-5">
+                            {{ $recentResults->onEachSide(1)->links() }}
+                        </div>
+                    @endif
                 </div>
             </section>
 

@@ -28,7 +28,7 @@
                         <option value="{{ $count }}" @selected(old('question_count', $defaultQuestions) == $count)>{{ $count }} questions</option>
                     @endforeach
                 </select>
-                <p class="mt-1 text-sm text-ink-muted">Choose between {{ $minimumQuestions }} and {{ $maximumQuestions }} questions.</p>
+                <p class="mt-1 text-sm text-ink-muted">Choose 10, 15, 20, or 30 questions.</p>
                 @error('question_count')
                     <p class="mt-2 text-sm text-rose-600">{{ $message }}</p>
                 @enderror
