@@ -36,8 +36,10 @@ class RegisteredUserController extends Controller
             'gender' => ['required', 'in:male,female,others'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
             'password' => ['required', 'confirmed', Rules\Password::min(8)->mixedCase()->numbers()->symbols()],
+            'privacy_notice_acknowledged' => ['accepted'],
         ], [
             'birthday.before_or_equal' => __('You must be at least 13 years old to create an account.'),
+            'privacy_notice_acknowledged.accepted' => __('Please review and acknowledge the Privacy Notice to create an account.'),
         ]);
 
         $user = User::create([
@@ -48,6 +50,7 @@ class RegisteredUserController extends Controller
             'gender' => $request->gender,
             'email' => $request->email,
             'password' => Hash::make($request->password),
+            'privacy_notice_acknowledged_at' => now(),
         ]);
 
         event(new Registered($user));

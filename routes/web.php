@@ -15,6 +15,8 @@ Route::get('/', function () {
     return view('home');
 });
 
+Route::view('/privacy-notice', 'legal.privacy-notice')->name('privacy.notice');
+
 Route::get('/resources', [ResourceController::class, 'index'])->name('resources.index');
 
 Route::get('/dashboard', [UserController::class, 'index'])

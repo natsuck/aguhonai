@@ -8,6 +8,8 @@ test('registration screen can be rendered', function () {
     $response = $this->get('/register');
 
     $response->assertStatus(200)
+        ->assertSee(route('privacy.notice'))
+        ->assertSee('name="privacy_notice_acknowledged"', false)
         ->assertSee('name="first_name"', false)
         ->assertSee('name="last_name"', false)
         ->assertSee('name="birthday"', false)
@@ -31,6 +33,7 @@ test('new users can register', function () {
         'email' => 'test@example.com',
         'password' => 'Abcdef1!',
         'password_confirmation' => 'Abcdef1!',
+        'privacy_notice_acknowledged' => '1',
     ]);
 
     $this->assertAuthenticated();
@@ -41,7 +44,29 @@ test('new users can register', function () {
     $this->assertSame('User', $user->last_name);
     $this->assertSame('female', $user->gender);
     $this->assertSame(today()->subYears(13)->toDateString(), $user->birthday->toDateString());
+    expect($user->privacy_notice_acknowledged_at)->not->toBeNull();
     Notification::assertSentTo($user, EmailVerificationCode::class);
+});
+
+test('registration requires acknowledgement of the privacy notice', function () {
+    $this->post('/register', [
+        'first_name' => 'Test',
+        'last_name' => 'User',
+        'birthday' => today()->subYears(13)->toDateString(),
+        'gender' => 'female',
+        'email' => 'test@example.com',
+        'password' => 'Abcdef1!',
+        'password_confirmation' => 'Abcdef1!',
+    ])->assertSessionHasErrors('privacy_notice_acknowledged');
+
+    $this->assertDatabaseMissing('users', ['email' => 'test@example.com']);
+});
+
+test('privacy notice is available before registration', function () {
+    $this->get(route('privacy.notice'))
+        ->assertOk()
+        ->assertSee('Data Privacy Act of 2012')
+        ->assertSee(route('register'));
 });
 
 test('registration rejects users younger than 13', function () {
@@ -53,6 +78,7 @@ test('registration rejects users younger than 13', function () {
         'email' => 'underage@example.com',
         'password' => 'StrongPass123!',
         'password_confirmation' => 'StrongPass123!',
+        'privacy_notice_acknowledged' => '1',
     ])->assertSessionHasErrors('birthday');
 
     $this->assertDatabaseMissing('users', ['email' => 'underage@example.com']);
@@ -67,6 +93,7 @@ test('registration only accepts the supported gender choices', function () {
         'email' => 'invalid-gender@example.com',
         'password' => 'StrongPass123!',
         'password_confirmation' => 'StrongPass123!',
+        'privacy_notice_acknowledged' => '1',
     ])->assertSessionHasErrors('gender');
 });
 
@@ -79,6 +106,7 @@ test('registration rejects passwords that do not meet strength requirements', fu
         'email' => 'test@example.com',
         'password' => 'password',
         'password_confirmation' => 'password',
+        'privacy_notice_acknowledged' => '1',
     ])->assertSessionHasErrors('password');
 });
 
@@ -91,5 +119,6 @@ test('registration rejects passwords shorter than 8 characters', function () {
         'email' => 'short-password@example.com',
         'password' => 'Abcde1!',
         'password_confirmation' => 'Abcde1!',
+        'privacy_notice_acknowledged' => '1',
     ])->assertSessionHasErrors('password');
 });

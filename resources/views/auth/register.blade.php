@@ -104,6 +104,19 @@
             <x-input-error :messages="$errors->get('password_confirmation')" class="mt-2" />
         </div>
 
+        <div class="mt-5">
+            <label for="privacy_notice_acknowledged" class="flex cursor-pointer items-start gap-3 text-sm text-ink">
+                <input id="privacy_notice_acknowledged" type="checkbox" name="privacy_notice_acknowledged" value="1" required @checked(old('privacy_notice_acknowledged')) class="mt-0.5 h-4 w-4 rounded border-slate-300 text-primary focus:ring-accent">
+                <span>
+                    I have read and acknowledge the
+                    <a href="{{ route('privacy.notice') }}" target="_blank" rel="noopener noreferrer" class="font-semibold text-primary-container underline hover:text-primary">
+                        Privacy Notice
+                    </a>.
+                </span>
+            </label>
+            <x-input-error :messages="$errors->get('privacy_notice_acknowledged')" class="mt-2" />
+        </div>
+
         <div class="flex items-center justify mt-4">
             <x-primary-button class="w-full justify-center">
                 {{ __('Create account') }}

@@ -31,6 +31,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'email',
         'password',
         'user_type',
+        'privacy_notice_acknowledged_at',
         'privacy_consented_at',
     ];
 
@@ -56,6 +57,7 @@ class User extends Authenticatable implements MustVerifyEmail
             'email_verification_code_expires_at' => 'datetime',
             'birthday' => 'date',
             'password' => 'hashed',
+            'privacy_notice_acknowledged_at' => 'datetime',
             'privacy_consented_at' => 'datetime',
         ];
     }
