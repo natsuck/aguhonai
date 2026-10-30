@@ -14,8 +14,8 @@
         <!-- Scripts -->
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     </head>
-    <body class="font-sans antialiased bg-surface text-ink selection:bg-accent/30 selection:text-primary">
-        <div class="min-h-screen flex flex-col sm:justify-center items-center pt-6 sm:pt-0 bg-gradient-to-b from-surface-low via-surface to-surface">
+    <body class="min-h-screen flex flex-col font-sans antialiased bg-surface text-ink selection:bg-accent/30 selection:text-primary">
+        <div class="flex-grow flex flex-col sm:justify-center items-center pt-6 sm:pt-0 bg-gradient-to-b from-surface-low via-surface to-surface">
             <div>
                 <a href="{{ url('/') }}" class="flex items-center gap-2 group">
                     <span class="text-3xl font-headline font-bold tracking-tight text-primary group-hover:text-primary-container transition-colors">
@@ -31,5 +31,7 @@
                 {{ $slot }}
             </div>
         </div>
+
+        <x-footer/>
     </body>
 </html>

@@ -39,5 +39,12 @@
             </div>
 
         </div>
+
+        <div class="mt-6 border-t border-surface-low pt-4 text-center text-xs text-ink-muted">
+            <span class="mr-3 font-semibold text-ink">{{ __('Legal') }}</span>
+            <a href="{{ route('privacy.notice') }}" class="font-medium underline hover:text-primary transition-colors">
+                    {{ __('Privacy Notice') }}
+            </a>
+        </div>
     </div>
 </footer>

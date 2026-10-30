@@ -9,6 +9,7 @@ test('registration screen can be rendered', function () {
 
     $response->assertStatus(200)
         ->assertSee(route('privacy.notice'))
+        ->assertSee(__('Legal'))
         ->assertSee('name="privacy_notice_acknowledged"', false)
         ->assertSee('name="first_name"', false)
         ->assertSee('name="last_name"', false)
