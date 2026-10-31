@@ -75,7 +75,6 @@ class ResourceSeeder extends Seeder
             ['type' => $type, 'title' => $title],
             $attributes + [
                 'slug' => \Illuminate\Support\Str::slug($title),
-                'is_published' => true,
             ],
         );
     }

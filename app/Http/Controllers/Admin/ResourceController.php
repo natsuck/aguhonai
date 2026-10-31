@@ -78,7 +78,7 @@ class ResourceController extends Controller
     {
         $validated = $this->validateResource($request);
 
-        DB::transaction(function () use ($validated, $request): void {
+        DB::transaction(function () use ($validated): void {
             $resource = Resource::query()->create($this->attributes($validated));
             $resource->schools()->sync($validated['school_ids'] ?? []);
         });
@@ -118,6 +118,14 @@ class ResourceController extends Controller
      */
     private function validateResource(Request $request, ?Resource $resource = null): array
     {
+        $published = $request->input('is_published');
+        if (is_string($published)) {
+            $normalizedPublished = filter_var($published, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            if ($normalizedPublished !== null) {
+                $request->merge(['is_published' => $normalizedPublished]);
+            }
+        }
+
         $type = $request->input('type', $resource?->type);
 
         $rules = [

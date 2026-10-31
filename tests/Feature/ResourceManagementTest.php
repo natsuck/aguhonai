@@ -3,6 +3,7 @@
 use App\Models\Resource;
 use App\Models\School;
 use App\Models\User;
+use Database\Seeders\ResourceSeeder;
 
 function adminUser(): User
 {
@@ -77,6 +78,75 @@ it('publishes a newly created university by default', function () {
     $this->get(route('resources.index'))
         ->assertOk()
         ->assertSee('Example University');
+});
+
+it('accepts standard checkbox boolean values for publication status', function () {
+    $admin = adminUser();
+
+    $this->actingAs($admin)->post(route('admin.resources.store'), [
+        'type' => Resource::TYPE_UNIVERSITY,
+        'title' => 'Checkbox Value University',
+        'is_published' => 'true',
+    ])->assertRedirect(route('admin.resources.index', ['type' => Resource::TYPE_UNIVERSITY]));
+
+    expect(Resource::query()->where('title', 'Checkbox Value University')->firstOrFail()->is_published)
+        ->toBeTrue();
+});
+
+it('submits one explicit publication value from the admin resource form', function () {
+    $admin = adminUser();
+
+    $page = $this->actingAs($admin)
+        ->get(route('admin.resources.index', ['type' => Resource::TYPE_UNIVERSITY]))
+        ->assertOk()
+        ->getContent();
+
+    expect($page)
+        ->toContain('name="is_published" x-bind:value="form.is_published ? \'1\' : \'0\'"')
+        ->not->toContain('id="is_published" name="is_published"');
+});
+
+it('shows validation errors when a university cannot be created', function () {
+    $admin = adminUser();
+
+    $this->actingAs($admin)
+        ->from(route('admin.resources.index', ['type' => Resource::TYPE_UNIVERSITY]))
+        ->post(route('admin.resources.store'), [
+            'type' => Resource::TYPE_UNIVERSITY,
+            'title' => 'Example University',
+            'website' => 'not a valid URL',
+            'is_published' => '1',
+        ])
+        ->assertRedirect(route('admin.resources.index', ['type' => Resource::TYPE_UNIVERSITY]))
+        ->assertSessionHasErrors('website');
+
+    $this->get(route('admin.resources.index', ['type' => Resource::TYPE_UNIVERSITY]))
+        ->assertOk()
+        ->assertSee('Resource was not saved')
+        ->assertSee('The website field must be a valid URL.');
+});
+
+it('preserves seeded resource publication changes and allows republication', function () {
+    $admin = adminUser();
+    $this->seed(ResourceSeeder::class);
+
+    $resource = Resource::query()
+        ->where('type', Resource::TYPE_UNIVERSITY)
+        ->where('title', 'University of the Philippines')
+        ->firstOrFail();
+
+    $resource->update(['is_published' => false]);
+    $this->seed(ResourceSeeder::class);
+
+    expect($resource->refresh()->is_published)->toBeFalse();
+
+    $this->actingAs($admin)->put(route('admin.resources.update', $resource), [
+        'type' => Resource::TYPE_UNIVERSITY,
+        'title' => $resource->title,
+        'is_published' => '1',
+    ])->assertRedirect(route('admin.resources.index', ['type' => Resource::TYPE_UNIVERSITY]));
+
+    expect($resource->refresh()->is_published)->toBeTrue();
 });
 
 it('validates required fields when creating a resource', function () {

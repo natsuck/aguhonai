@@ -21,6 +21,17 @@
                 </div>
             @endif
 
+            @if ($errors->any())
+                <div role="alert" class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+                    <p class="font-semibold">Resource was not saved. Please correct the following:</p>
+                    <ul class="mt-2 list-inside list-disc">
+                        @foreach ($errors->all() as $error)
+                            <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
             {{-- Type tabs --}}
             <div class="flex flex-wrap gap-2 border-b border-slate-300/40 pb-4">
                 @foreach ($types as $key => $label)
@@ -273,8 +284,8 @@
                         </div>
 
                         <div class="sm:col-span-2 flex items-center gap-2">
-                            <input type="hidden" name="is_published" value="0">
-                            <input type="checkbox" id="is_published" name="is_published" value="1" x-model="form.is_published"
+                            <input type="hidden" name="is_published" x-bind:value="form.is_published ? '1' : '0'">
+                            <input type="checkbox" id="is_published" x-model="form.is_published"
                                    class="rounded border-surface-high text-accent focus:ring-accent">
                             <label for="is_published" class="text-sm text-ink-muted">Published (visible on the public Resource Center)</label>
                         </div>
