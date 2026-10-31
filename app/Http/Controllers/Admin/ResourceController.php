@@ -177,7 +177,7 @@ class ResourceController extends Controller
             'slug' => Str::slug($validated['title']),
             'summary' => $validated['summary'] ?? null,
             'link' => $validated['link'] ?? null,
-            'is_published' => (bool) ($validated['is_published'] ?? false),
+            'is_published' => (bool) ($validated['is_published'] ?? true),
             'sort_order' => (int) ($validated['sort_order'] ?? 0),
         ];
 

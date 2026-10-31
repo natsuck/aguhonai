@@ -326,7 +326,7 @@
                     return {
                         type: '{{ $type }}',
                         title: '', summary: '', link: '',
-                        is_published: false, sort_order: 0,
+                        is_published: true, sort_order: 0,
                         period: '', coverage: '', tips: '',
                         grantor: '', criteria: '', opens_at: '', closes_at: '',
                         short_name: '', location: '', institution_type: '',

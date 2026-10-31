@@ -61,6 +61,24 @@ it('lets an admin create a scholarship with dates and schools', function () {
         ->and($resource->schools->pluck('id')->all())->toBe([$school->id]);
 });
 
+it('publishes a newly created university by default', function () {
+    $admin = adminUser();
+
+    $this->actingAs($admin)->post(route('admin.resources.store'), [
+        'type' => Resource::TYPE_UNIVERSITY,
+        'title' => 'Example University',
+        'short_name' => 'EU',
+    ])->assertRedirect(route('admin.resources.index', ['type' => Resource::TYPE_UNIVERSITY]));
+
+    $resource = Resource::query()->where('title', 'Example University')->firstOrFail();
+
+    expect($resource->is_published)->toBeTrue();
+
+    $this->get(route('resources.index'))
+        ->assertOk()
+        ->assertSee('Example University');
+});
+
 it('validates required fields when creating a resource', function () {
     $admin = adminUser();
 
